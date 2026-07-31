@@ -8,7 +8,7 @@ export default function TradingDashboard() {
   const [asset, setAsset] = useState("BTC-USDT");
   const [marginMode, setMarginMode] = useState("Isolated");
   const [multiTf, setMultiTf] = useState("ALL");
-  const [singleTf, setSingleTf] = useState("5m");
+  const [singleTf, setSingleTf] = useState("1h");
   const [minProb, setMinProb] = useState("60%");
   
   const [isLoading, setIsLoading] = useState(false);
