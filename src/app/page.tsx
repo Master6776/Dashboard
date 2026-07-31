@@ -5,16 +5,15 @@ import { Play, RefreshCw } from "lucide-react";
 import TradingViewWidget from "../components/TradingViewWidget";
 
 export default function TradingDashboard() {
+  // BTC ist hier als Initialwert festgesetzt
   const [asset, setAsset] = useState("BTC-USDT");
   const [marginMode, setMarginMode] = useState("Isolated");
   const [multiTf, setMultiTf] = useState("ALL");
-  // Default auf 1H
   const [singleTf, setSingleTf] = useState("1H"); 
   
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Default auf 1H
   const [analysisData, setAnalysisData] = useState({
     probability: 70,
     timeframe: "1H", 
@@ -31,13 +30,12 @@ export default function TradingDashboard() {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      // API Call nutzt jetzt immer das aktuelle singleTf (1H)
       const res = await fetch(`/api/blofin?instId=${asset}&bar=${singleTf}`);
       const json = await res.json();
       if (json.code === "0") {
         setAnalysisData({
           probability: json.data.probability,
-          timeframe: singleTf, // Zeigt den gewählten Tf an
+          timeframe: singleTf,
           position: json.data.position,
           leverage: "10x",
           entry: json.data.livePrice,
