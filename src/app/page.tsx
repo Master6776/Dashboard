@@ -1,14 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Play, RefreshCw } from "lucide-react";
 import TradingViewWidget from "../components/TradingViewWidget";
 
 export default function TradingDashboard() {
-  // BTC ist hier als Initialwert festgesetzt
   const [asset, setAsset] = useState("BTC-USDT");
   const [marginMode, setMarginMode] = useState("Isolated");
-  const [multiTf, setMultiTf] = useState("ALL");
   const [singleTf, setSingleTf] = useState("1H"); 
   
   const [isLoading, setIsLoading] = useState(false);
@@ -23,7 +21,7 @@ export default function TradingDashboard() {
     stop: 63553,
     tp1: 67444,
     rsi: 48,
-    reasoning: ["Drücke RUN ANALYSIS um die Daten zu laden..."]
+    reasoning: ["Warte auf Daten..."]
   });
 
   const handleRunAnalysis = async () => {
@@ -44,13 +42,20 @@ export default function TradingDashboard() {
           rsi: json.data.rsi,
           reasoning: json.data.reasoning
         });
+      } else {
+        setErrorMsg("Fehler beim Abruf.");
       }
     } catch {
-      setErrorMsg("Fehler beim Abruf.");
+      setErrorMsg("Verbindungsfehler.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  // AUTOMATIK: Lädt bei Start und bei jeder Änderung von Asset oder Timeframe neu
+  useEffect(() => {
+    handleRunAnalysis();
+  }, [asset, singleTf]);
 
   return (
     <div className="min-h-screen bg-[#090a0f] text-gray-200 p-6 flex justify-center">
@@ -89,7 +94,13 @@ export default function TradingDashboard() {
             <label className="text-[10px] text-gray-400 font-bold uppercase mb-2 block">SINGLE TIMEFRAME</label>
             <div className="grid grid-cols-6 gap-1">
               {["1m", "5m", "15m", "1H", "4H", "1D"].map(tf => (
-                <button key={tf} onClick={() => setSingleTf(tf)} className={`py-1 text-[10px] rounded ${singleTf === tf ? "bg-blue-600" : "bg-[#181a24]"}`}>{tf}</button>
+                <button 
+                  key={tf} 
+                  onClick={() => setSingleTf(tf)} 
+                  className={`py-1 text-[10px] rounded ${singleTf === tf ? "bg-blue-600" : "bg-[#181a24]"}`}
+                >
+                  {tf}
+                </button>
               ))}
             </div>
           </div>
@@ -112,7 +123,12 @@ export default function TradingDashboard() {
           </div>
 
           <div className="grid grid-cols-4 gap-4 mt-6">
-            {[{l: "TIMEFRAME", v: analysisData.timeframe}, {l: "POSITION", v: analysisData.position}, {l: "LEVERAGE", v: analysisData.leverage}, {l: "BLOFIN ENTRY", v: `$${analysisData.entry}`}].map(item => (
+            {[
+              {l: "TIMEFRAME", v: analysisData.timeframe}, 
+              {l: "POSITION", v: analysisData.position}, 
+              {l: "LEVERAGE", v: analysisData.leverage}, 
+              {l: "BLOFIN ENTRY", v: `$${analysisData.entry}`}
+            ].map(item => (
               <div key={item.l} className="bg-[#161822] p-4 rounded border border-gray-800">
                 <div className="text-[9px] text-gray-500 uppercase">{item.l}</div>
                 <div className="text-lg font-bold">{item.v}</div>
