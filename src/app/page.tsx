@@ -1,65 +1,137 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState } from "react";
+import { Play, RefreshCw, AlertCircle } from "lucide-react";
+import TradingViewWidget from "../components/TradingViewWidget";
+
+export default function TradingDashboard() {
+  const [asset, setAsset] = useState("BTC-USDT");
+  const [marginMode, setMarginMode] = useState("Isolated");
+  const [multiTf, setMultiTf] = useState("ALL");
+  const [singleTf, setSingleTf] = useState("5m");
+  const [minProb, setMinProb] = useState("60%");
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [analysisData, setAnalysisData] = useState({
+    probability: 70,
+    timeframe: "5m",
+    position: "Long",
+    leverage: "10x",
+    entry: 64850,
+    stop: 63553,
+    tp1: 67444,
+    rsi: 48,
+    reasoning: ["Reasoning wird bei Analyse geladen..."]
+  });
+
+  const handleRunAnalysis = async () => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/blofin?instId=${asset}&bar=${singleTf}`);
+      const json = await res.json();
+      if (json.code === "0") {
+        setAnalysisData({
+          probability: json.data.probability,
+          timeframe: singleTf,
+          position: json.data.position,
+          leverage: "10x",
+          entry: json.data.livePrice,
+          stop: json.data.stop,
+          tp1: json.data.tp1,
+          rsi: json.data.rsi,
+          reasoning: json.data.reasoning
+        });
+      }
+    } catch {
+      setErrorMsg("Fehler beim Abruf.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[#090a0f] text-gray-200 p-6 flex justify-center">
+      <div className="w-full max-w-7xl flex gap-6">
+        
+        {/* LINKS: SIDEBAR */}
+        <div className="w-80 bg-[#10121a] border border-gray-800 rounded-xl p-5 flex flex-col gap-6">
+          <div>
+            <label className="text-[10px] text-gray-400 font-bold uppercase mb-2 block">ASSET (BLOFIN)</label>
+            <input className="w-full bg-[#181a24] border border-gray-700 rounded px-3 py-2 text-sm" value={asset} onChange={(e) => setAsset(e.target.value)} />
+             </div>
+          
+          <div>
+            <label className="text-[10px] text-gray-400 font-bold uppercase mb-2 block">EXCHANGE</label>
+            <div className="w-full bg-[#181a24] border border-blue-600/50 rounded px-3 py-2 text-sm text-blue-400">Blofin (Connected Live)</div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+          <div>
+            <label className="text-[10px] text-gray-400 font-bold uppercase mb-2 block">MARGIN MODE</label>
+            <select className="w-full bg-[#181a24] border border-gray-700 rounded px-3 py-2 text-sm" value={marginMode} onChange={(e) => setMarginMode(e.target.value)}>
+              <option>Isolated</option>
+              <option>Cross</option>
+            </select>
+          </div>
+
+                <div>
+            <label className="text-[10px] text-gray-400 font-bold uppercase mb-2 block">MULTI TIMEFRAME</label>
+            <div className="grid grid-cols-5 gap-1">
+              {["TURBO", "SCALP", "INTRA", "SWING", "ALL"].map(tf => (
+                <button key={tf} onClick={() => setMultiTf(tf)} className={`py-1 text-[10px] rounded ${multiTf === tf ? "bg-blue-600" : "bg-[#181a24]"}`}>{tf}</button>
+              ))}
+            </div>
+                </div>
+
+                <div>
+            <label className="text-[10px] text-gray-400 font-bold uppercase mb-2 block">SINGLE TIMEFRAME</label>
+            <div className="grid grid-cols-6 gap-1">
+              {["1m", "3m", "5m", "15m", "1H", "4H", "1D"].map(tf => (
+                <button key={tf} onClick={() => setSingleTf(tf)} className={`py-1 text-[10px] rounded ${singleTf === tf ? "bg-blue-600" : "bg-[#181a24]"}`}>{tf}</button>
+              ))}
+                </div>
+              </div>
+
+          <button onClick={handleRunAnalysis} className="w-full bg-blue-600 py-3 rounded text-sm font-bold flex justify-center items-center gap-2">
+            {isLoading ? <RefreshCw className="animate-spin" /> : <Play size={16} />} RUN ANALYSIS
+          </button>
+              </div>
+
+        {/* RECHTS: MAIN */}
+        <div className="flex-1 bg-[#10121a] border border-gray-800 rounded-xl p-6">
+          <TradingViewWidget symbol={asset} />
+          
+          <div className="flex justify-between items-end mt-4">
+            <h2 className="text-2xl font-bold text-blue-500">{asset} <span className="text-gray-500 font-normal">@ BLOFIN ({analysisData.timeframe})</span></h2>
+            <div className="text-right">
+              <div className="text-[10px] text-orange-500 font-bold uppercase">PROBABILITY</div>
+              <div className="text-3xl font-black text-orange-500">{analysisData.probability}%</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-4 mt-6">
+            {[{l: "TIMEFRAME", v: analysisData.timeframe}, {l: "POSITION", v: analysisData.position}, {l: "LEVERAGE", v: analysisData.leverage}, {l: "BLOFIN ENTRY", v: `$${analysisData.entry}`}].map(item => (
+              <div key={item.l} className="bg-[#161822] p-4 rounded border border-gray-800">
+                <div className="text-[9px] text-gray-500 uppercase">{item.l}</div>
+                <div className="text-lg font-bold">{item.v}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="bg-[#161822] p-4 rounded border border-red-900/30">
+              <div className="text-[9px] text-red-500 uppercase">STOP LOSS</div>
+              <div className="text-2xl font-bold text-red-500">${analysisData.stop}</div>
+            </div>
+            <div className="bg-[#161822] p-4 rounded border border-emerald-900/30">
+              <div className="text-[9px] text-emerald-500 uppercase">TAKE PROFIT (TP1)</div>
+              <div className="text-2xl font-bold text-emerald-500">${analysisData.tp1}</div>
+            </div>
+          </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
