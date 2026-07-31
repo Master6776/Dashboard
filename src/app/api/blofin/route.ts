@@ -19,8 +19,17 @@ function calculateWaveTrend(prices: number[], n1 = 9, n2 = 12): number[] {
 }
 
 function calculateMFI(prices: number[]): number {
-  const change = prices[prices.length - 1] - prices[prices.length - 14];
-  return change > 0 ? 60 : 40; 
+  if (prices.length < 15) return 50;
+  let gains = 0;
+  let losses = 0;
+  for (let i = prices.length - 14; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses += Math.abs(diff);
+  }
+  if (losses === 0) return 100;
+  const rs = gains / losses;
+  return 100 - (100 / (1 + rs));
 }
 
 function calculateVWAP(prices: number[], volumes: number[]): number {
@@ -30,7 +39,7 @@ function calculateVWAP(prices: number[], volumes: number[]): number {
     pvSum += prices[i] * volumes[i];
     vSum += volumes[i];
   }
-  return pvSum / vSum;
+  return vSum === 0 ? prices[prices.length - 1] : pvSum / vSum;
 }
 
 function calculateBollinger(prices: number[], period = 20) {
@@ -104,10 +113,9 @@ export async function GET(request: Request) {
       reasoning.push("YELLOW CROSS: Bärische Wende"); 
     }
 
-    // 2. WaveTrend mit DYNAMISCHEM Extra-Score (Tiefe/Höhe des Oszillators)
+    // 2. WaveTrend Oszillator (Symmetrisch für Long & Short)
     const currentWT = wt[wt.length - 1];
     if (currentWT < -50) { 
-      // Je tiefer unter -50, desto höher der Score (z.B. WT -70 gibt mehr Punkte als WT -52)
       const wtBonus = Math.abs(currentWT + 50) * 0.8;
       longScore += 25 + wtBonus; 
       reasoning.push(`WT Überverkauft (${currentWT.toFixed(1)})`); 
@@ -117,7 +125,7 @@ export async function GET(request: Request) {
       reasoning.push(`WT Überkauft (${currentWT.toFixed(1)})`); 
     }
 
-    // 3. Momentum & MoneyFlow mit dynamischer Abweichung
+    // 3. Momentum & MoneyFlow (Ausbalanciert)
     if (momWave > 50 && moneyFlowBars > 0) { 
       const momBonus = (momWave - 50) * 0.3;
       longScore += 15 + momBonus; 
@@ -128,15 +136,15 @@ export async function GET(request: Request) {
       reasoning.push("MCB: Bärisches Momentum"); 
     }
 
-    // 4. VWAP-Abstand in Prozent (Dynamisch)
+    // 4. VWAP-Abstand (Angepasst & neutralisiert)
     const vwapDistancePct = Math.abs((livePrice - vwap) / vwap) * 100;
-    const vwapBonus = Math.min(vwapDistancePct * 15, 20); // Max 20 Zusatzpunkte für VWAP
+    const vwapBonus = Math.min(vwapDistancePct * 5, 10); // Sanfterer Bonus (max 10 Statt 20)
 
     if (livePrice < vwap) { 
-      longScore += 10 + vwapBonus; 
+      longScore += 5 + vwapBonus; 
       reasoning.push(`VWAP: Long-Bias (${vwapDistancePct.toFixed(2)}% unter VWAP)`); 
     } else { 
-      shortScore += 10 + vwapBonus; 
+      shortScore += 5 + vwapBonus; 
       reasoning.push(`VWAP: Short-Bias (${vwapDistancePct.toFixed(2)}% über VWAP)`); 
     }
 
@@ -148,7 +156,7 @@ export async function GET(request: Request) {
     // Berechnet das verhältnismäßige Übergewicht des Gewinner-Signals
     let probability = Math.round((winningScore / (totalScore || 1)) * 100);
 
-    // Verhindert extrem unglaubwürdige Werte (bleibt im realistischen Bereich von 52% bis 94%)
+    // Verhindert extrem unglaubwürdige Werte (bleibt im Bereich von 52% bis 94%)
     probability = Math.max(52, Math.min(probability, 94));
     
     // Stop Loss & Take Profit
@@ -170,6 +178,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) { 
-    return NextResponse.json({ code: "-1", msg: "Fehler" }, { status: 500 }); 
+    return NextResponse.json({ code: "-1", msg: "Fehler beim Abrufen der Marktdaten." }, { status: 500 }); 
   }
 }
