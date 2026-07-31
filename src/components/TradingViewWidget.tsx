@@ -22,7 +22,7 @@ function TradingViewWidget({ symbol }: { symbol: string }) {
       interval: "60",
       timezone: "Etc/UTC",
       theme: "dark",
-      style: "1",
+      style: "3",
       locale: "de_DE",
       allow_symbol_change: true,
       calendar: false,
