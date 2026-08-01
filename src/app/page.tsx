@@ -79,30 +79,31 @@ export default function TradingDashboard() {
       const json = await res.json();
 
       if (json.code === "0" && json.data) {
-        const liveEntry = json.data.livePrice || json.data.entry || analysisData.entry;
-        const isLong = (json.data.position || "Long") === "Long";
+        setAnalysisData((prev) => {
+          const liveEntry = json.data.livePrice || json.data.entry || prev.entry;
+          const isLong = (json.data.position || "Long") === "Long";
 
-        // Dynamische TP-Berechnung basierend auf neuem Entry (falls API keine tpLevels mitgibt)
-        const defaultTps: TakeProfitLevel[] = [
-          { label: "TP1", price: isLong ? liveEntry * 1.005 : liveEntry * 0.995, prob: 69 },
-          { label: "TP2", price: isLong ? liveEntry * 1.010 : liveEntry * 0.990, prob: 60 },
-          { label: "TP3", price: isLong ? liveEntry * 1.015 : liveEntry * 0.985, prob: 54 },
-          { label: "TP4", price: isLong ? liveEntry * 1.025 : liveEntry * 0.975, prob: 42 },
-        ];
+          const defaultTps: TakeProfitLevel[] = [
+            { label: "TP1", price: isLong ? liveEntry * 1.005 : liveEntry * 0.995, prob: 69 },
+            { label: "TP2", price: isLong ? liveEntry * 1.010 : liveEntry * 0.990, prob: 60 },
+            { label: "TP3", price: isLong ? liveEntry * 1.015 : liveEntry * 0.985, prob: 54 },
+            { label: "TP4", price: isLong ? liveEntry * 1.025 : liveEntry * 0.975, prob: 42 },
+          ];
 
-        setAnalysisData((prev) => ({
-          ...prev,
-          symbol: `${asset}USDT`,
-          timeframe: singleTf,
-          position: json.data.position || "Long",
-          entry: liveEntry,
-          stopLoss: json.data.stop || (isLong ? liveEntry * 0.99 : liveEntry * 1.01),
-          probability: json.data.probability || prev.probability,
-          tpLevels: json.data.tpLevels && json.data.tpLevels.length > 0 ? json.data.tpLevels : defaultTps,
-          tpReasoning: json.data.tpReasoning || prev.tpReasoning,
-          reasoning: json.data.reasoning || prev.reasoning,
-          rejections: json.data.rejections || prev.rejections,
-        }));
+          return {
+            ...prev,
+            symbol: `${asset}USDT`,
+            timeframe: singleTf,
+            position: json.data.position || "Long",
+            entry: liveEntry,
+            stopLoss: json.data.stop || (isLong ? liveEntry * 0.99 : liveEntry * 1.01),
+            probability: json.data.probability || prev.probability,
+            tpLevels: json.data.tpLevels && json.data.tpLevels.length > 0 ? json.data.tpLevels : defaultTps,
+            tpReasoning: json.data.tpReasoning || prev.tpReasoning,
+            reasoning: json.data.reasoning || prev.reasoning,
+            rejections: json.data.rejections || prev.rejections,
+          };
+        });
       } else {
         setErrorMsg(json.msg || "Fehler beim Laden der Analysedaten.");
       }
@@ -127,8 +128,8 @@ export default function TradingDashboard() {
       <div className="max-w-[1600px] mx-auto mb-4 flex items-center justify-between border-b border-gray-800/60 pb-3">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-1">
-            <span className="text-indigo-500">My</span>Cipher
-            <span className="text-[10px] bg-indigo-600/30 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30 font-semibold ml-1">v2.05</span>
+            <span className="text-indigo-500">My Master</span> Dashboard
+            <span className="text-[10px] bg-indigo-600/30 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30 font-semibold ml-1.5">v2.05</span>
           </h1>
         </div>
         <p className="text-xs text-gray-400 font-medium hidden sm:block">
@@ -277,7 +278,7 @@ export default function TradingDashboard() {
             <TradingViewWidget symbol={`${asset}-USDT`} timeframe={singleTf} />
           </div>
 
-          {/* My Master Dashboard ANALYSIS DISPLAY */}
+          {/* ANALYSIS DISPLAY */}
           <div className="bg-[#10131c] border border-gray-800/80 rounded-xl p-5 space-y-5 shadow-xl">
             
             <div className="flex justify-between items-start border-b border-gray-800/60 pb-3">
