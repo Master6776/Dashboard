@@ -277,7 +277,7 @@ export default function TradingDashboard() {
             <TradingViewWidget symbol={`${asset}-USDT`} timeframe={singleTf} />
           </div>
 
-          {/* MYCIPHER ANALYSIS DISPLAY */}
+          {/* My Master Dashboard ANALYSIS DISPLAY */}
           <div className="bg-[#10131c] border border-gray-800/80 rounded-xl p-5 space-y-5 shadow-xl">
             
             <div className="flex justify-between items-start border-b border-gray-800/60 pb-3">
