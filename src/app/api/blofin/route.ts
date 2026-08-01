@@ -86,10 +86,11 @@ export async function GET(request: Request) {
         risk: `Stop-Loss anchored with volatility buffer around ${stopLoss.toFixed(1)}`,
       };
 
+      // 🎯 KORRIGIERTE REJECTIONS LOGIK:
       const rejections = [
-        `5m ${isLong ? "Short" : "Long"} – ${Math.max(probability - 14, 42)}% Counter-trend momentum rejection`,
-        `15m Neutral – Local volatility around ${livePrice.toFixed(1)}`,
-        `4h ${position} – High timeframe trend alignment confirmed`,
+        `${bar} ${isLong ? "Short" : "Long"} – ${Math.max(probability - 14, 42)}% Counter-trend momentum rejection`,
+        `15m ${isLong ? "Long" : "Short"} – Local volatility around ${livePrice.toFixed(1)}`,
+        `4h ${isLong ? "Long" : "Short"} – Higher timeframe trend alignment check`,
       ];
 
       return NextResponse.json({
@@ -117,7 +118,7 @@ export async function GET(request: Request) {
       { code: "1", msg: "Keine Marktdaten von BloFin empfangen." },
       { status: 400 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { code: "500", msg: "Serverfehler beim Abrufen der BloFin-Daten." },
       { status: 500 }
