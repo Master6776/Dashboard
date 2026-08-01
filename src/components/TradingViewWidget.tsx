@@ -2,40 +2,21 @@
 
 import React, { useEffect, useRef, memo } from "react";
 
-// 1. TypeScript Interface für die Props definieren
+// Interface für Vercel TypeScript Check
 interface TradingViewWidgetProps {
   symbol: string;
-  timeframe?: string; // timeframe optional machen
+  timeframe?: string;
 }
 
-// 2. Hilfsfunktion zur Umwandlung des Timeframes für TradingView
-const mapTimeframeToInterval = (tf?: string): string => {
-  switch (tf) {
-    case "1m": return "1";
-    case "5m": return "5";
-    case "15m": return "15";
-    case "1h":
-    case "1H": return "60";
-    case "4h":
-    case "4H": return "240";
-    case "1D": return "D";
-    default: return "60";
-  }
-};
-
-function TradingViewWidget({ symbol, timeframe = "1h" }: TradingViewWidgetProps) {
+function TradingViewWidget({ symbol }: TradingViewWidgetProps) {
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const currentContainer = container.current;
-    if (!currentContainer) return;
-
-    // Container vor neuem Inject leeren
-    currentContainer.innerHTML = "";
+    if (!container.current) return;
+    container.current.innerHTML = ""; // Container leeren bei Symbolwechsel
 
     // Ticker für TradingView formatieren (z. B. BTC-USDT -> BLOFIN:BTCUSDT)
     const formattedSymbol = `BLOFIN:${symbol.replace("-", "").toUpperCase()}`;
-    const interval = mapTimeframeToInterval(timeframe);
 
     const script = document.createElement("script");
     script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
@@ -44,30 +25,24 @@ function TradingViewWidget({ symbol, timeframe = "1h" }: TradingViewWidgetProps)
     script.innerHTML = JSON.stringify({
       autosize: true,
       symbol: formattedSymbol,
-      interval: interval,
+      interval: "60",
       timezone: "Etc/UTC",
       theme: "dark",
-      style: "1", // 1 = Japanische Kerzenständer (Candlesticks)
+      style: "3",
       locale: "de_DE",
       allow_symbol_change: true,
       calendar: false,
       support_host: "https://www.tradingview.com",
     });
 
-    currentContainer.appendChild(script);
-
-    // Cleanup-Funktion beim Unmounten oder Parameter-Wechsel
-    return () => {
-      if (currentContainer) {
-        currentContainer.innerHTML = "";
-      }
-    };
-  }, [symbol, timeframe]);
+    container.current.appendChild(script);
+  }, [symbol]);
 
   return (
-    <div className="w-full h-[450px] bg-[#161822] rounded-lg overflow-hidden border border-gray-800/80 shadow-inner">
-      <div className="tradingview-widget-container h-full w-full" ref={container} />
-    </div>
+    <div 
+      className="w-full h-[450px] bg-[#1a1d26] rounded-lg overflow-hidden border border-gray-800" 
+      ref={container} 
+    />
   );
 }
 
