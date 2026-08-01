@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Play, RefreshCw, AlertCircle, Info, Lock } from "lucide-react";
+import { Play, RefreshCw, AlertCircle, Lock } from "lucide-react";
 import TradingViewWidget from "../components/TradingViewWidget";
 
 interface TakeProfitLevel {
@@ -87,7 +87,6 @@ export default function TradingDashboard() {
           entry: json.data.livePrice || prev.entry,
           stopLoss: json.data.stop || prev.stopLoss,
           probability: json.data.probability || prev.probability,
-          // Ergänzungen bei Backend-Abruf...
         }));
       } else {
         setErrorMsg(json.msg || "Fehler beim Laden der Analysedaten.");
@@ -109,7 +108,7 @@ export default function TradingDashboard() {
   return (
     <div className="min-h-screen bg-[#0a0c10] text-gray-200 p-4 lg:p-6 font-sans">
       
-      {/* HEADER / BRANDING */}
+      {/* HEADER */}
       <div className="max-w-[1600px] mx-auto mb-4 flex items-center justify-between border-b border-gray-800/60 pb-3">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-1">
@@ -124,11 +123,10 @@ export default function TradingDashboard() {
 
       <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-5">
         
-        {/* ================= LINKS: SIDEBAR (CONTROLS) ================= */}
+        {/* SIDEBAR */}
         <div className="lg:col-span-3 space-y-4">
           <div className="bg-[#10131c] border border-gray-800/80 rounded-xl p-4 space-y-4 shadow-xl">
             
-            {/* Asset Dropdown */}
             <div>
               <label className="text-[10px] text-gray-400 font-bold uppercase block mb-1.5">ASSET</label>
               <select
@@ -136,13 +134,12 @@ export default function TradingDashboard() {
                 value={asset}
                 onChange={(e) => setAsset(e.target.value)}
               >
-                <option value="BTC">BTC</option>
-                <option value="ETH">ETH</option>
-                <option value="SOL">SOL</option>
+                <option value="BTC">BTC / USDT</option>
+                <option value="ETH">ETH / USDT</option>
+                <option value="SOL">SOL / USDT</option>
               </select>
             </div>
 
-            {/* Exchange Dropdown */}
             <div>
               <label className="text-[10px] text-gray-400 font-bold uppercase block mb-1.5">EXCHANGE</label>
               <select
@@ -150,12 +147,10 @@ export default function TradingDashboard() {
                 value={exchange}
                 onChange={(e) => setExchange(e.target.value)}
               >
-                <option value="BloFin">BloFin</option>
-                <option value="Bitunix">Bitunix</option>
+                <option value="BloFin">BloFin (Connected Live)</option>
               </select>
             </div>
 
-            {/* Margin Mode */}
             <div>
               <label className="text-[10px] text-gray-400 font-bold uppercase block mb-1.5">MARGIN MODE</label>
               <select
@@ -168,7 +163,6 @@ export default function TradingDashboard() {
               </select>
             </div>
 
-            {/* Multi Timeframe Preset */}
             <div>
               <label className="text-[10px] text-gray-400 font-bold uppercase block mb-1.5">MULTI TIMEFRAME</label>
               <div className="grid grid-cols-5 gap-1">
@@ -188,7 +182,6 @@ export default function TradingDashboard() {
               </div>
             </div>
 
-            {/* Single Timeframe */}
             <div>
               <label className="text-[10px] text-gray-400 font-bold uppercase block mb-1.5">SINGLE TIMEFRAME</label>
               <div className="grid grid-cols-6 gap-1">
@@ -208,7 +201,6 @@ export default function TradingDashboard() {
               </div>
             </div>
 
-            {/* Min Probability */}
             <div>
               <label className="text-[10px] text-gray-400 font-bold uppercase block mb-1.5">MIN PROBABILITY</label>
               <select
@@ -223,7 +215,6 @@ export default function TradingDashboard() {
               </select>
             </div>
 
-            {/* Error Banner */}
             {errorMsg && (
               <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-2.5 rounded text-xs flex items-center gap-2">
                 <AlertCircle size={14} className="shrink-0" />
@@ -231,18 +222,16 @@ export default function TradingDashboard() {
               </div>
             )}
 
-            {/* Run Analysis Button */}
             <button
               onClick={handleRunAnalysis}
               disabled={isLoading}
-              className="w-full bg-[#2a2e3d] hover:bg-[#343a4d] text-white py-2.5 rounded-md text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-2 transition disabled:opacity-50"
+              className="w-full bg-[#2a2e3d] hover:bg-[#343a4d] text-white py-2.5 rounded-md text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-2 transition disabled:opacity-50 cursor-pointer"
             >
               {isLoading ? <RefreshCw className="animate-spin" size={14} /> : <Play size={14} />}
               {isLoading ? "ANALYZING..." : "RUN ANALYSIS"}
             </button>
           </div>
 
-          {/* QUICK ORDER BOX */}
           <div className="bg-[#10131c] border border-gray-800/80 rounded-xl p-4 space-y-3">
             <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">FORCE TRADE</div>
             <div className="grid grid-cols-3 gap-1">
@@ -259,24 +248,23 @@ export default function TradingDashboard() {
               </div>
             </div>
 
-            <button className="w-full bg-amber-600/20 border border-amber-500/50 hover:bg-amber-600/30 text-amber-300 text-xs font-bold py-2 rounded transition flex justify-center items-center gap-1.5">
+            <button className="w-full bg-amber-600/20 border border-amber-500/50 hover:bg-amber-600/30 text-amber-300 text-xs font-bold py-2 rounded transition flex justify-center items-center gap-1.5 cursor-pointer">
               <span>⚡ Enter Trade</span>
             </button>
           </div>
         </div>
 
-        {/* ================= RECHTS: MAIN AREA ================= */}
+        {/* MAIN AREA */}
         <div className="lg:col-span-9 space-y-5">
           
-          {/* TRADINGVIEW CHART (BLEIBT ERHALTEN!) */}
-          <div className="bg-[#10131c] border border-gray-800/80 rounded-xl p-3 shadow-xl">
+          {/* TRADINGVIEW CHART BOX */}
+          <div className="bg-[#10131c] border border-gray-800/80 rounded-xl p-3 shadow-xl overflow-hidden">
             <TradingViewWidget symbol={`${asset}-USDT`} timeframe={singleTf} />
           </div>
 
-          {/* DASHBOARD ANALYSIS DISPLAY */}
+          {/* MYCIPHER ANALYSIS DISPLAY */}
           <div className="bg-[#10131c] border border-gray-800/80 rounded-xl p-5 space-y-5 shadow-xl">
             
-            {/* Header / Probability */}
             <div className="flex justify-between items-start border-b border-gray-800/60 pb-3">
               <div>
                 <h2 className="text-xl font-bold text-indigo-400">
@@ -289,7 +277,6 @@ export default function TradingDashboard() {
               </div>
             </div>
 
-            {/* Metrics Grid Row 1: Timeframe, Position, Leverage, Entry */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-[#161a26] p-3 rounded border border-gray-800/80">
                 <div className="text-[9px] text-gray-500 font-bold uppercase">TIMEFRAME</div>
@@ -311,7 +298,6 @@ export default function TradingDashboard() {
               </div>
             </div>
 
-            {/* Metrics Grid Row 2: Stop Loss & TP1-TP4 Targets */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="bg-[#161a26] p-3 rounded border border-red-900/30">
                 <div className="text-[9px] text-red-500 font-bold uppercase">STOP</div>
@@ -331,7 +317,6 @@ export default function TradingDashboard() {
               <span className="font-bold text-gray-300">TP Reason:</span> {analysisData.tpReasoning}
             </div>
 
-            {/* Reasoning Section */}
             <div className="space-y-2 border-t border-gray-800/60 pt-4">
               <h3 className="text-sm font-bold text-gray-200">Reasoning:</h3>
               <ul className="text-xs text-gray-300 space-y-1.5 list-disc list-inside">
@@ -342,7 +327,6 @@ export default function TradingDashboard() {
               </ul>
             </div>
 
-            {/* Rejections Section */}
             <div className="space-y-2 border-t border-gray-800/60 pt-4">
               <h3 className="text-sm font-bold text-gray-200">Rejections:</h3>
               <ul className="text-xs text-gray-400 space-y-1">
@@ -352,7 +336,6 @@ export default function TradingDashboard() {
               </ul>
             </div>
 
-            {/* Disclaimer */}
             <div className="border-t border-gray-800/60 pt-3 text-[10px] text-gray-500 leading-relaxed">
               <strong>Disclaimer:</strong> This analysis is a snapshot of {analysisData.symbol} at this present time. Prices can change rapidly due to market volatility, and this is not financial advice.
             </div>
