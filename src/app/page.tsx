@@ -79,14 +79,29 @@ export default function TradingDashboard() {
       const json = await res.json();
 
       if (json.code === "0" && json.data) {
+        const liveEntry = json.data.livePrice || json.data.entry || analysisData.entry;
+        const isLong = (json.data.position || "Long") === "Long";
+
+        // Dynamische TP-Berechnung basierend auf neuem Entry (falls API keine tpLevels mitgibt)
+        const defaultTps: TakeProfitLevel[] = [
+          { label: "TP1", price: isLong ? liveEntry * 1.005 : liveEntry * 0.995, prob: 69 },
+          { label: "TP2", price: isLong ? liveEntry * 1.010 : liveEntry * 0.990, prob: 60 },
+          { label: "TP3", price: isLong ? liveEntry * 1.015 : liveEntry * 0.985, prob: 54 },
+          { label: "TP4", price: isLong ? liveEntry * 1.025 : liveEntry * 0.975, prob: 42 },
+        ];
+
         setAnalysisData((prev) => ({
           ...prev,
           symbol: `${asset}USDT`,
           timeframe: singleTf,
           position: json.data.position || "Long",
-          entry: json.data.livePrice || prev.entry,
-          stopLoss: json.data.stop || prev.stopLoss,
+          entry: liveEntry,
+          stopLoss: json.data.stop || (isLong ? liveEntry * 0.99 : liveEntry * 1.01),
           probability: json.data.probability || prev.probability,
+          tpLevels: json.data.tpLevels && json.data.tpLevels.length > 0 ? json.data.tpLevels : defaultTps,
+          tpReasoning: json.data.tpReasoning || prev.tpReasoning,
+          reasoning: json.data.reasoning || prev.reasoning,
+          rejections: json.data.rejections || prev.rejections,
         }));
       } else {
         setErrorMsg(json.msg || "Fehler beim Laden der Analysedaten.");
@@ -103,7 +118,7 @@ export default function TradingDashboard() {
   }, [handleRunAnalysis]);
 
   const formatPrice = (val: number) =>
-    val.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+    val ? val.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : "0.0";
 
   return (
     <div className="min-h-screen bg-[#0a0c10] text-gray-200 p-4 lg:p-6 font-sans">
