@@ -63,7 +63,7 @@ export async function GET(request: Request) {
 
     // 3. Gemini Anfrage senden mit dem passenden Modell
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash",
       contents: prompt,
     });
 
