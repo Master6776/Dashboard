@@ -41,7 +41,7 @@ const TIMEFRAMES = [
 
 export default function MasterDashboard() {
   const [selectedSymbol, setSelectedSymbol] = useState("BTC-USDT");
-  const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
+  const [selectedTimeframe, setSelectedTimeframe] = useState("4h");
   
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
