@@ -52,7 +52,6 @@ export default function MasterDashboard() {
       setLoading(true);
       setError(null);
       try {
-        // Hier wird nun korrekt "/api/blofin" angesprochen
         const res = await fetch(`/api/blofin?instId=${selectedSymbol}&bar=${selectedTimeframe}`);
         const json = await res.json();
 
@@ -73,20 +72,17 @@ export default function MasterDashboard() {
 
   return (
     <main className="min-h-screen bg-[#0a0c10] text-gray-200 p-4 md:p-8 font-sans">
-      {/* Header & Controls */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-4 border-b border-gray-800">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             🚀 Master Trading Dashboard
           </h1>
           <p className="text-sm text-gray-400">
-            Realtime Analysis powered by BloFin & Market Cipher AI
+            Realtime Analysis powered by BloFin & Google Gemini AI
           </p>
         </div>
 
-        {/* Symbol & Timeframe Selector */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Symbole */}
           <div className="flex bg-[#121620] p-1 rounded-lg border border-gray-800">
             {SYMBOLS.map((sym) => (
               <button
@@ -103,7 +99,6 @@ export default function MasterDashboard() {
             ))}
           </div>
 
-          {/* Timeframes */}
           <div className="flex bg-[#121620] p-1 rounded-lg border border-gray-800">
             {TIMEFRAMES.map((tf) => (
               <button
@@ -122,10 +117,7 @@ export default function MasterDashboard() {
         </div>
       </div>
 
-      {/* Main Content Grid */}
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Linke 2 Spalten: Chart & AI Analysis Details */}
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-[#121620] p-4 rounded-xl border border-gray-800 shadow-xl">
             <div className="flex justify-between items-center mb-3">
@@ -144,7 +136,7 @@ export default function MasterDashboard() {
           {data && (
             <div className="bg-[#121620] p-5 rounded-xl border border-gray-800 shadow-xl">
               <h2 className="text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 flex items-center gap-2">
-                🧠 Market Cipher AI Insights
+                🧠 Gemini AI Insights
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div className="bg-[#0f131c] p-3 rounded-lg border border-gray-800/60">
@@ -168,11 +160,10 @@ export default function MasterDashboard() {
           )}
         </div>
 
-        {/* Rechte Spalte: Signal-Box & TP / SL Levels */}
         <div className="space-y-6">
           {loading ? (
             <div className="bg-[#121620] p-8 rounded-xl border border-gray-800 text-center text-gray-400">
-              Lade Marktdaten...
+              Frage Google Gemini AI...
             </div>
           ) : error ? (
             <div className="bg-red-950/40 p-4 rounded-xl border border-red-900 text-red-300 text-sm">
@@ -180,7 +171,6 @@ export default function MasterDashboard() {
             </div>
           ) : data ? (
             <div className="bg-[#121620] p-5 rounded-xl border border-gray-800 shadow-xl space-y-6">
-              
               <div className="flex justify-between items-center pb-4 border-b border-gray-800">
                 <div>
                   <span
@@ -250,11 +240,9 @@ export default function MasterDashboard() {
                   ))}
                 </ul>
               </div>
-
             </div>
           ) : null}
         </div>
-
       </div>
     </main>
   );
