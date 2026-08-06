@@ -61,13 +61,17 @@ export async function GET(request: Request) {
       ]
     });
 
-    // 2. Prompt für Gemini erstellen
+    // 2. Erweiterten Prompt für Gemini mit MCB-Indikator und liquiden Zonen erstellen
     const prompt = `
-      Du bist ein professioneller Krypto-Daytrader und Market Cipher Analyst. 
-      Analysiere den Markt für das Asset ${instId} im Timeframe ${bar}. 
+      Du bist ein professioneller Krypto-Daytrader, Quant-Analyst und Market Cipher / MCB Indikator Spezialist. 
+      Analysiere den Markt für das Asset ${instId} im Timeframe ${bar} unter Einbezug von:
+      - Orderbuch- und Volumen-Profilen
+      - Dem MCB Indikator (Multi-Criteria Bias & Money Flow)
+      - Spezifischen liquiden Zonen (Stop-Loss-Cluster, Order-Blöcke)
+      
       Der aktuelle Live-Preis liegt bei ${currentPrice}.
       
-      Erstelle eine Analyse und antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (ohne Markdown-Backticks, reiner Text):
+      Erstelle eine hochpräzise Analyse und antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (ohne Markdown-Backticks, reiner Text):
       {
         "symbol": "${instId.replace("-", "")}",
         "exchange": "BloFin",
@@ -84,17 +88,17 @@ export async function GET(request: Request) {
           {"label": "TP3", "price": ${currentPrice * 1.03}, "prob": 60},
           {"label": "TP4", "price": ${currentPrice * 1.04}, "prob": 55}
         ],
-        "tpReasoning": "🤖 Von Gemini KI errechnet & analysiert",
+        "tpReasoning": "🤖 Von Gemini KI errechnet & analysiert (MCB & Liquidity)",
         "reasoning": {
-          "structure": "Solide Trendfortsetzung im gewählten Intervall",
-          "keyLevels": "Wichtige Unterstützung am gleitenden Durchschnitt",
-          "momentum": "Aufwärtsdynamik ist stabil",
-          "risk": "Volatilitäts-Buffer am Stop-Loss aktiv"
+          "structure": "Solide Trendfortsetzung im MCB-Modell",
+          "keyLevels": "Kritische liquide Zone / Order-Block identifiziert",
+          "momentum": "Money Flow zeigt stabiles Kaufinteresse",
+          "risk": "Volatilitäts-Buffer hinter die liquide Zone gesetzt"
         },
         "rejections": [
-          "Gegenargument 1: Leichter Widerstand im höheren Zeitfenster",
-          "Gegenargument 2: Volumen zeigt kurze Konsolidierung",
-          "Gegenargument 3: Überkaufte Indikatoren im 15m Chart"
+          "Gegenargument 1: Vorsicht vor Liquiditäts-Sweep im höheren Zeitfenster",
+          "Gegenargument 2: MCB zeigt leichte Konsolidierung",
+          "Gegenargument 3: Widerstandszone an der nächsten Liquiditätsmarke"
         ]
       }
     `;
@@ -130,7 +134,7 @@ export async function GET(request: Request) {
         
         // Sicherstellen, dass das KI-Label auf jeden Fall gesetzt ist
         if (!aiData.tpReasoning || aiData.tpReasoning.includes("Fallback")) {
-          aiData.tpReasoning = "🤖 Von Gemini KI errechnet & analysiert";
+          aiData.tpReasoning = "🤖 Von Gemini KI errechnet & analysiert (MCB & Liquidity)";
         }
       } catch (parseErr) {
         aiData = getFallbackData();
