@@ -32,12 +32,19 @@ export async function GET(request: Request) {
     const currentPrice = parseFloat(candles[0][4]);
     const isBullish = currentPrice > parseFloat(candles[candles.length - 1][4]);
 
-    // Dynamischer Fallback-Modus mit timeframe-abhängigen Wahrscheinlichkeiten
+    // Korrigierter Fallback-Modus mit sauberer zeitabhängiger Skalierung für SL & TPs
     const getFallbackData = () => {
-      const step = currentPrice * (bar === "15m" ? 0.0015 : bar === "1h" ? 0.003 : 0.007);
-      const pos = isBullish ? "Long" : "Short";
+      // Exakte zeitabhängige Multiplikatoren (höheres Timeframe = größerer Spielraum für Kerzen)
+      const multipliers: Record<string, number> = { 
+        "15m": 0.0015, 
+        "30m": 0.0025, 
+        "1h": 0.0040, 
+        "4h": 0.0080, 
+        "1d": 0.0150 
+      };
       
-      // Kleinere Timeframes haben oft volatilere, tiefere Wahrscheinlichkeiten
+      const step = currentPrice * (multipliers[bar] || 0.0040);
+      const pos = isBullish ? "Long" : "Short";
       const baseProb = bar === "15m" ? 68 : bar === "1h" ? 74 : 81;
 
       return {
@@ -48,6 +55,7 @@ export async function GET(request: Request) {
         leverage: "10x",
         livePrice: currentPrice,
         entry: currentPrice,
+        // Stop-Loss skaliert jetzt logisch mit dem Timeframe (weiter weg bei höheren TF)
         stopLoss: Number((isBullish ? currentPrice - (step * 2.2) : currentPrice + (step * 2.2)).toFixed(2)),
         probability: baseProb,
         tpLevels: [
@@ -56,36 +64,33 @@ export async function GET(request: Request) {
           { label: "TP3", price: Number((isBullish ? currentPrice + (step * 3) : currentPrice - (step * 3)).toFixed(2)), prob: baseProb - 15 },
           { label: "TP4", price: Number((isBullish ? currentPrice + (step * 4.5) : currentPrice - (step * 4.5)).toFixed(2)), prob: baseProb - 23 }
         ],
-        tpReasoning: `⚠️ Fallback-Modus (${pos}-Setup für ${bar} berechnet)`,
+        tpReasoning: `⚠️ Fallback-Modus (${pos}-Setup für ${bar} skaliert)`,
         reasoning: {
-          "structure": `${pos}-Struktur im ${bar}-Intervall (Fallback)`,
-          "keyLevels": "Heuristische Liquiditäts-Cluster aktiv",
+          "structure": `${pos}-Struktur im ${bar}-Intervall (Volatilitäts-Fallback)`,
+          "keyLevels": `Heuristische Liquiditäts-Cluster für ${bar} aktiv`,
           "momentum": "Orderbuch-Flow im aktuellen Zeitfenster",
-          "risk": "Automatisierter technischer Puffer aktiv"
+          "risk": `Proportionaler Stop-Loss-Puffer für ${bar} gesetzt`
         },
         rejections: [
-          `Gegenargument 1: API-Limit erreicht – Werte an ${bar} angepasst`,
+          `Gegenargument 1: API-Limit – Werte an ${bar} angepasst`,
           "Gegenargument 2: Vorsicht vor Volatilitätsspitzen im Orderbuch",
           `Gegenargument 3: Übergeordnete Trendstruktur im ${bar} beachten`
         ]
       };
     };
 
-    // 2. Prompt für Gemini mit klarem Befehl für zeitfensterabhängige Wahrscheinlichkeiten
+    // 2. Erweiterten Prompt für Gemini mit strikter Timeframe- und SL-Proportionalität
     const prompt = `
       Du bist ein professioneller Krypto-Daytrader, Quant-Analyst und Market Cipher / MCB Indikator Spezialist. 
       Analysiere die folgenden BloFin Kerzendaten für das Asset ${instId} im Timeframe **${bar}**.
       Aktueller Live-Preis: ${currentPrice}.
       Kerzenhistorie (neueste zuerst): ${JSON.stringify(candles.slice(0, 5))}.
 
-      WICHTIG: Die Wahrscheinlichkeiten (probability sowie die TP-Wahrscheinlichkeiten) MÜSSEN realistisch zum gewählten Timeframe (${bar}) passen! 
-      - Ein 15m-Chart hat andere statistische Rausch- und Trefferquoten als ein 1d-Chart. Passe die Zahlen individuell an die Marktstruktur an (keine starren Standardwerte verwenden!).
+      WICHTIGE REGELN FÜR DIE BERECHNUNG:
+      1. **Proportionaler Stop-Loss:** Der Stop-Loss-Abstand muss sich strikt proportional zum Timeframe verhalten! Ein Stop-Loss im 1h- oder 4h-Chart MUSS zwingend weiter vom Entry entfernt sein als ein SL im 15m-Chart, um das Marktrauschen größerer Kerzen abzufedern.
+      2. **Zeitfenster-Wahrscheinlichkeiten:** Die Wahrscheinlichkeiten (probability sowie TP-Wahrscheinlichkeiten) müssen realistische Werte für den Timeframe ${bar} widerspiegeln.
+      3. **Richtung:** Entscheide frei, ob das optimale Setup **"Long"** oder **"Short"** sein soll basierend auf dem MCB-Indikator und Trend.
 
-      Aufgaben:
-      1. Prüfe den Trend, den MCB-Indikator (Multi-Criteria Bias) und liquide Zonen im Timeframe ${bar}.
-      2. Entscheide frei, ob das Setup **"Long"** oder **"Short"** sein soll.
-      3. Berechne Entry, Stop-Loss und TP1 bis TP4 dynamisch passend zu ${bar}.
-      
       Antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (ohne Markdown-Backticks, reiner Text):
       {
         "symbol": "${instId.replace("-", "")}",
@@ -105,10 +110,10 @@ export async function GET(request: Request) {
         ],
         "tpReasoning": "🤖 Von Gemini KI errechnet & analysiert (${bar})",
         "reasoning": {
-          "structure": "Marktstruktur im ${bar}",
-          "keyLevels": "Liquide Zonen im ${bar}",
-          "momentum": "Momentum und MCB im ${bar}",
-          "risk": "Risiko-Management für ${bar}"
+          "structure": "Marktstruktur & MCB-Bias im ${bar}",
+          "keyLevels": "Liquide Zonen & Key Levels im ${bar}",
+          "momentum": "Money Flow & Momentum im ${bar}",
+          "risk": "Risk Management & proportionaler Puffer im ${bar}"
         },
         "rejections": [
           "Gegenargument 1 für ${bar}...",
