@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 
     const currentPrice = parseFloat(blofinData.data[0][4]);
 
-    // Funktion für smarte Fallback-Daten basierend auf dem echten Preis
+    // Funktion für Fallback-Daten (klar als Fallback markiert)
     const getFallbackData = () => ({
       symbol: instId.replace("-", ""),
       exchange: "BloFin",
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
         { label: "TP3", price: currentPrice * 1.03, prob: 60 },
         { label: "TP4", price: currentPrice * 1.04, prob: 54 }
       ],
-      tpReasoning: "Fallback-Modus aktiv: Strukturierte Ziele basierend auf aktuellen BloFin-Marktdaten",
+      tpReasoning: "⚠️ Fallback-Modus (Live-Daten ohne KI-Text)",
       reasoning: {
         "structure": "Stabile Trendfortsetzung im gewählten Intervall (Live-Daten)",
         "keyLevels": "Wichtige Liquiditätszone am aktuellen Kurs",
@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       Analysiere den Markt für das Asset ${instId} im Timeframe ${bar}. 
       Der aktuelle Live-Preis liegt bei ${currentPrice}.
       
-      Erstelle eine Analyse und antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (ohne Markdown-Backticks wie \`\`\`json, sondern reiner Text):
+      Erstelle eine Analyse und antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (ohne Markdown-Backticks, reiner Text):
       {
         "symbol": "${instId.replace("-", "")}",
         "exchange": "BloFin",
@@ -84,7 +84,7 @@ export async function GET(request: Request) {
           {"label": "TP3", "price": ${currentPrice * 1.03}, "prob": 60},
           {"label": "TP4", "price": ${currentPrice * 1.04}, "prob": 55}
         ],
-        "tpReasoning": "Strukturierte Ziele basierend auf aktuellen Swing-Zonen",
+        "tpReasoning": "🤖 Von Gemini KI errechnet & analysiert",
         "reasoning": {
           "structure": "Solide Trendfortsetzung im gewählten Intervall",
           "keyLevels": "Wichtige Unterstützung am gleitenden Durchschnitt",
@@ -127,13 +127,15 @@ export async function GET(request: Request) {
         const rawText = response.text;
         const cleanedJsonText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
         aiData = JSON.parse(cleanedJsonText);
+        
+        // Sicherstellen, dass das KI-Label auf jeden Fall gesetzt ist
+        if (!aiData.tpReasoning || aiData.tpReasoning.includes("Fallback")) {
+          aiData.tpReasoning = "🤖 Von Gemini KI errechnet & analysiert";
+        }
       } catch (parseErr) {
-        // Falls JSON fehlerhaft ist, greife zum Fallback
         aiData = getFallbackData();
       }
     } else {
-      // Wenn Gemini komplett blockiert (429 / Tageslimit), nutze direkt den Fallback mit echten Preisen
-      console.warn("Gemini Limit erreicht – aktiviere intelligenten Fallback mit echten BloFin-Daten.");
       aiData = getFallbackData();
     }
 
@@ -150,5 +152,4 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-  
 }
