@@ -28,86 +28,97 @@ export async function GET(request: Request) {
       return NextResponse.json({ code: "1", msg: "Keine Marktdaten von BloFin empfangen." }, { status: 400 });
     }
 
-    const currentPrice = parseFloat(blofinData.data[0][4]);
+    const candles = blofinData.data;
+    const currentPrice = parseFloat(candles[0][4]);
+    const isBullish = currentPrice > parseFloat(candles[candles.length - 1][4]);
 
-    // Intelligenterer Fallback-Modus mit simulierter MCB- & Liquiditäts-Logik
+    // Dynamischer Fallback-Modus mit timeframe-abhängigen Wahrscheinlichkeiten
     const getFallbackData = () => {
-      // Kleine dynamische Abstände basierend auf dem echten Live-Preis (ca. 0.3% Schritte für TPs)
-      const step = currentPrice * 0.0035; 
+      const step = currentPrice * (bar === "15m" ? 0.0015 : bar === "1h" ? 0.003 : 0.007);
+      const pos = isBullish ? "Long" : "Short";
+      
+      // Kleinere Timeframes haben oft volatilere, tiefere Wahrscheinlichkeiten
+      const baseProb = bar === "15m" ? 68 : bar === "1h" ? 74 : 81;
+
       return {
         symbol: instId.replace("-", ""),
         exchange: "BloFin",
         timeframe: bar,
-        position: "Long",
+        position: pos,
         leverage: "10x",
         livePrice: currentPrice,
         entry: currentPrice,
-        stopLoss: Number((currentPrice - (step * 2.2)).toFixed(2)), // Unter die simulierte liquide Zone
-        probability: 74,
+        stopLoss: Number((isBullish ? currentPrice - (step * 2.2) : currentPrice + (step * 2.2)).toFixed(2)),
+        probability: baseProb,
         tpLevels: [
-          { label: "TP1", price: Number((currentPrice + step).toFixed(2)), prob: 70 },
-          { label: "TP2", price: Number((currentPrice + (step * 2)).toFixed(2)), prob: 64 },
-          { label: "TP3", price: Number((currentPrice + (step * 3)).toFixed(2)), prob: 58 },
-          { label: "TP4", price: Number((currentPrice + (step * 4.5)).toFixed(2)), prob: 50 }
+          { label: "TP1", price: Number((isBullish ? currentPrice + step : currentPrice - step).toFixed(2)), prob: baseProb - 2 },
+          { label: "TP2", price: Number((isBullish ? currentPrice + (step * 2) : currentPrice - (step * 2)).toFixed(2)), prob: baseProb - 8 },
+          { label: "TP3", price: Number((isBullish ? currentPrice + (step * 3) : currentPrice - (step * 3)).toFixed(2)), prob: baseProb - 15 },
+          { label: "TP4", price: Number((isBullish ? currentPrice + (step * 4.5) : currentPrice - (step * 4.5)).toFixed(2)), prob: baseProb - 23 }
         ],
-        tpReasoning: "⚠️ Fallback-Modus (MCB-Struktur & Liquiditäts-Zonen heuristisch berechnet)",
+        tpReasoning: `⚠️ Fallback-Modus (${pos}-Setup für ${bar} berechnet)`,
         reasoning: {
-          "structure": "Trendfortsetzung basierend auf lokalem Orderbuch-Flow",
+          "structure": `${pos}-Struktur im ${bar}-Intervall (Fallback)`,
           "keyLevels": "Heuristische Liquiditäts-Cluster aktiv",
-          "momentum": "Kaufdruck im aktuellen Intervall stabil",
+          "momentum": "Orderbuch-Flow im aktuellen Zeitfenster",
           "risk": "Automatisierter technischer Puffer aktiv"
         },
         rejections: [
-          "Gegenargument 1: API-Limit erreicht – Werte basieren auf mathematischem MCB-Fallback",
+          `Gegenargument 1: API-Limit erreicht – Werte an ${bar} angepasst`,
           "Gegenargument 2: Vorsicht vor Volatilitätsspitzen im Orderbuch",
-          "Gegenargument 3: Wichtige Widerstandsmarke im höheren Zeitfenster abwarten"
+          `Gegenargument 3: Übergeordnete Trendstruktur im ${bar} beachten`
         ]
       };
     };
 
-    // 2. Erweiterten Prompt für Gemini mit MCB-Indikator und liquiden Zonen erstellen
+    // 2. Prompt für Gemini mit klarem Befehl für zeitfensterabhängige Wahrscheinlichkeiten
     const prompt = `
       Du bist ein professioneller Krypto-Daytrader, Quant-Analyst und Market Cipher / MCB Indikator Spezialist. 
-      Analysiere den Markt für das Asset ${instId} im Timeframe ${bar} unter Einbezug von:
-      - Orderbuch- und Volumen-Profilen
-      - Dem MCB Indikator (Multi-Criteria Bias & Money Flow)
-      - Spezifischen liquiden Zonen (Stop-Loss-Cluster, Order-Blöcke)
+      Analysiere die folgenden BloFin Kerzendaten für das Asset ${instId} im Timeframe **${bar}**.
+      Aktueller Live-Preis: ${currentPrice}.
+      Kerzenhistorie (neueste zuerst): ${JSON.stringify(candles.slice(0, 5))}.
+
+      WICHTIG: Die Wahrscheinlichkeiten (probability sowie die TP-Wahrscheinlichkeiten) MÜSSEN realistisch zum gewählten Timeframe (${bar}) passen! 
+      - Ein 15m-Chart hat andere statistische Rausch- und Trefferquoten als ein 1d-Chart. Passe die Zahlen individuell an die Marktstruktur an (keine starren Standardwerte verwenden!).
+
+      Aufgaben:
+      1. Prüfe den Trend, den MCB-Indikator (Multi-Criteria Bias) und liquide Zonen im Timeframe ${bar}.
+      2. Entscheide frei, ob das Setup **"Long"** oder **"Short"** sein soll.
+      3. Berechne Entry, Stop-Loss und TP1 bis TP4 dynamisch passend zu ${bar}.
       
-      Der aktuelle Live-Preis liegt bei ${currentPrice}.
-      
-      Erstelle eine hochpräzise Analyse und antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (ohne Markdown-Backticks, reiner Text):
+      Antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (ohne Markdown-Backticks, reiner Text):
       {
         "symbol": "${instId.replace("-", "")}",
         "exchange": "BloFin",
         "timeframe": "${bar}",
-        "position": "Long",
+        "position": "Long oder Short",
         "leverage": "10x",
         "livePrice": ${currentPrice},
         "entry": ${currentPrice},
-        "stopLoss": ${currentPrice * 0.98},
-        "probability": 75,
+        "stopLoss": 0,
+        "probability": 0,
         "tpLevels": [
-          {"label": "TP1", "price": ${currentPrice * 1.01}, "prob": 70},
-          {"label": "TP2", "price": ${currentPrice * 1.02}, "prob": 65},
-          {"label": "TP3", "price": ${currentPrice * 1.03}, "prob": 60},
-          {"label": "TP4", "price": ${currentPrice * 1.04}, "prob": 55}
+          {"label": "TP1", "price": 0, "prob": 0},
+          {"label": "TP2", "price": 0, "prob": 0},
+          {"label": "TP3", "price": 0, "prob": 0},
+          {"label": "TP4", "price": 0, "prob": 0}
         ],
-        "tpReasoning": "🤖 Von Gemini KI errechnet & analysiert (MCB & Liquidity)",
+        "tpReasoning": "🤖 Von Gemini KI errechnet & analysiert (${bar})",
         "reasoning": {
-          "structure": "Solide Trendfortsetzung im MCB-Modell",
-          "keyLevels": "Kritische liquide Zone / Order-Block identifiziert",
-          "momentum": "Money Flow zeigt stabiles Kaufinteresse",
-          "risk": "Volatilitäts-Buffer hinter die liquide Zone gesetzt"
+          "structure": "Marktstruktur im ${bar}",
+          "keyLevels": "Liquide Zonen im ${bar}",
+          "momentum": "Momentum und MCB im ${bar}",
+          "risk": "Risiko-Management für ${bar}"
         },
         "rejections": [
-          "Gegenargument 1: Vorsicht vor Liquiditäts-Sweep im höheren Zeitfenster",
-          "Gegenargument 2: MCB zeigt leichte Konsolidierung",
-          "Gegenargument 3: Widerstandszone an der nächsten Liquiditätsmarke"
+          "Gegenargument 1 für ${bar}...",
+          "Gegenargument 2 für ${bar}...",
+          "Gegenargument 3 für ${bar}..."
         ]
       }
     `;
 
-    // 3. Anfrage an Gemini mit automatischem Retry
+    // 3. Anfrage an Gemini mit Retry
     let response;
     let retries = 2;
     let delay = 2000;
@@ -137,7 +148,7 @@ export async function GET(request: Request) {
         aiData = JSON.parse(cleanedJsonText);
         
         if (!aiData.tpReasoning || aiData.tpReasoning.includes("Fallback")) {
-          aiData.tpReasoning = "🤖 Von Gemini KI errechnet & analysiert (MCB & Liquidity)";
+          aiData.tpReasoning = `🤖 Von Gemini KI errechnet & analysiert (${bar})`;
         }
       } catch (parseErr) {
         aiData = getFallbackData();

@@ -78,7 +78,7 @@ export default function MasterDashboard() {
             🚀 Master Trading Dashboard
           </h1>
           <p className="text-sm text-gray-400">
-            Realtime Analysis powered by BloFin & Google Gemini AI
+            Realtime Analysis powered by BloFin, MCB Indicator & Google Gemini AI
           </p>
         </div>
 
@@ -136,23 +136,23 @@ export default function MasterDashboard() {
           {data && (
             <div className="bg-[#121620] p-5 rounded-xl border border-gray-800 shadow-xl">
               <h2 className="text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 flex items-center gap-2">
-                🧠 Gemini AI Insights
+                🧠 Gemini AI & MCB Insights
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div className="bg-[#0f131c] p-3 rounded-lg border border-gray-800/60">
-                  <span className="text-xs text-gray-500 block mb-1">Struktur & Momentum</span>
+                  <span className="text-xs text-blue-400 font-semibold block mb-1">Struktur & MCB-Bias</span>
                   <p className="text-gray-300">{data.reasoning.structure}</p>
                 </div>
                 <div className="bg-[#0f131c] p-3 rounded-lg border border-gray-800/60">
-                  <span className="text-xs text-gray-500 block mb-1">Key Levels</span>
+                  <span className="text-xs text-purple-400 font-semibold block mb-1">Liquide Zonen & Key Levels</span>
                   <p className="text-gray-300">{data.reasoning.keyLevels}</p>
                 </div>
                 <div className="bg-[#0f131c] p-3 rounded-lg border border-gray-800/60">
-                  <span className="text-xs text-gray-500 block mb-1">Probability Score</span>
+                  <span className="text-xs text-green-400 font-semibold block mb-1">Money Flow & Momentum</span>
                   <p className="text-gray-300">{data.reasoning.momentum}</p>
                 </div>
                 <div className="bg-[#0f131c] p-3 rounded-lg border border-gray-800/60">
-                  <span className="text-xs text-gray-500 block mb-1">Risk Management</span>
+                  <span className="text-xs text-yellow-400 font-semibold block mb-1">Risk Management & Puffer</span>
                   <p className="text-gray-300">{data.reasoning.risk}</p>
                 </div>
               </div>
@@ -208,7 +208,7 @@ export default function MasterDashboard() {
               <div className="space-y-2">
                 <div className="flex justify-between items-center text-xs text-gray-400 mb-1">
                   <span>Take Profit Targets</span>
-                  <span>{data.tpReasoning}</span>
+                  <span className="text-blue-400">{data.tpReasoning}</span>
                 </div>
                 <div className="space-y-2">
                   {data.tpLevels.map((tp, idx) => (
