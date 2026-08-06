@@ -2,21 +2,26 @@
 
 import React, { useEffect, useRef, memo } from "react";
 
-// Interface für Vercel TypeScript Check
 interface TradingViewWidgetProps {
   symbol: string;
   timeframe?: string;
 }
 
-function TradingViewWidget({ symbol }: TradingViewWidgetProps) {
+function TradingViewWidget({ symbol, timeframe = "1h" }: TradingViewWidgetProps) {
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!container.current) return;
-    container.current.innerHTML = ""; // Container leeren bei Symbolwechsel
+    container.current.innerHTML = "";
 
-    // Ticker für TradingView formatieren (z. B. BTC-USDT -> BLOFIN:BTCUSDT)
     const formattedSymbol = `BLOFIN:${symbol.replace("-", "").toUpperCase()}`;
+
+    let tvInterval = "60";
+    if (timeframe === "15m") tvInterval = "15";
+    else if (timeframe === "30m") tvInterval = "30";
+    else if (timeframe === "1h") tvInterval = "60";
+    else if (timeframe === "4h") tvInterval = "240";
+    else if (timeframe === "1d") tvInterval = "D";
 
     const script = document.createElement("script");
     script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
@@ -25,7 +30,7 @@ function TradingViewWidget({ symbol }: TradingViewWidgetProps) {
     script.innerHTML = JSON.stringify({
       autosize: true,
       symbol: formattedSymbol,
-      interval: "60",
+      interval: tvInterval,
       timezone: "Etc/UTC",
       theme: "dark",
       style: "3",
@@ -36,7 +41,7 @@ function TradingViewWidget({ symbol }: TradingViewWidgetProps) {
     });
 
     container.current.appendChild(script);
-  }, [symbol]);
+  }, [symbol, timeframe]);
 
   return (
     <div 

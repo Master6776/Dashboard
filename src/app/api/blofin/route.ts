@@ -52,16 +52,15 @@ export async function GET(request: Request) {
       }
       const avgVolatility = totalVolatility / Math.min(10, klines.length);
 
-      // 4. Eindeutiger Offset pro Kombination (z.B. BTC + 1h unterscheidet sich von BTC + 15m)
+      // 4. Eindeutiger Offset pro Kombination
       const seed = getSymbolTimeframeSeed(instId, bar);
-      const uniqueOffset = (seed % 17) - 8; // Wert zwischen -8 und +8
+      const uniqueOffset = (seed % 17) - 8;
 
       // 5. Dynamische Probability berechnen
       const baseProb = 64;
       const momentumBonus = Math.min(Math.abs(multiCandleChangePct) * 8, 16);
       const volBonus = Math.min(avgVolatility * 4, 12);
 
-      // Endergebnis berechnen und zwischen 54% und 88% begrenzen
       const rawProb = Math.round(baseProb + momentumBonus + volBonus + uniqueOffset);
       const probability = Math.min(Math.max(rawProb, 54), 88);
 
@@ -86,7 +85,6 @@ export async function GET(request: Request) {
         risk: `Stop-Loss anchored with volatility buffer around ${stopLoss.toFixed(1)}`,
       };
 
-      // 🎯 KORRIGIERTE REJECTIONS LOGIK:
       const rejections = [
         `${bar} ${isLong ? "Short" : "Long"} – ${Math.max(probability - 14, 42)}% Counter-trend momentum rejection`,
         `15m ${isLong ? "Long" : "Short"} – Local volatility around ${livePrice.toFixed(1)}`,
