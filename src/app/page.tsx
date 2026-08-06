@@ -52,7 +52,8 @@ export default function MasterDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/market?instId=${selectedSymbol}&bar=${selectedTimeframe}`);
+        // Hier wird nun korrekt "/api/blofin" angesprochen
+        const res = await fetch(`/api/blofin?instId=${selectedSymbol}&bar=${selectedTimeframe}`);
         const json = await res.json();
 
         if (json.code === "0" && json.data) {
