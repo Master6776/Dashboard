@@ -71,20 +71,32 @@ export default function MasterDashboard() {
     checkHigherTimeframeTrends();
   }, [selectedSymbol]);
 
-  // Dynamische Signale (Lokale Berechnung)
+  // Dynamische Signale mit timeframe-abhängigem Stop-Loss & Take-Profit
   function calculateSignals(candles: any[], symbol: string, tf: string): DashboardData {
     setAnalysisType("lokal"); // Kennzeichnet es als lokale Berechnung
     const closes = candles.map((c: any) => parseFloat(c[4])).reverse();
     const currentPrice = closes[closes.length - 1];
     const sma = closes.reduce((a, b) => a + b, 0) / closes.length;
     
+    // Timeframe-abhängiger Multiplikator für den Stop-Loss & TP Abstand
+    let tfMultiplier = 0.015; // Standard 1.5%
+    if (tf === "15m") tfMultiplier = 0.008;      // 0.8% bei 15m (sehr eng)
+    else if (tf === "30m") tfMultiplier = 0.012; // 1.2% bei 30m
+    else if (tf === "1h") tfMultiplier = 0.018;  // 1.8% bei 1H
+    else if (tf === "4h") tfMultiplier = 0.025;  // 2.5% bei 4H
+    else if (tf === "1d") tfMultiplier = 0.04;   // 4.0% bei 1D (weit)
+
     const deviation = ((currentPrice - sma) / sma) * 100;
-    const volatilityFactor = (Math.random() * 10);
-    const baseProb = Math.min(94, Math.max(52, Math.round(72 + (deviation * 8) + (volatilityFactor - 5))));
+    const volatilityFactor = (Math.random() * 5);
+    const baseProb = Math.min(94, Math.max(52, Math.round(72 + (deviation * 8) + (volatilityFactor - 2.5))));
     
     const isBullish = currentPrice >= sma;
     const position = isBullish ? "Long" : "Short";
-    const stopLoss = isBullish ? currentPrice * 0.985 : currentPrice * 1.015;
+    
+    // SL skaliert exakt mit dem gewählten Timeframe
+    const stopLoss = isBullish 
+      ? currentPrice * (1 - tfMultiplier) 
+      : currentPrice * (1 + tfMultiplier);
 
     return {
       symbol, exchange: "BloFin", timeframe: tf,
@@ -92,16 +104,16 @@ export default function MasterDashboard() {
       entry: currentPrice, stopLoss: parseFloat(stopLoss.toFixed(2)),
       probability: baseProb,
       tpLevels: [
-        { label: "TP1", price: parseFloat((isBullish ? currentPrice * 1.015 : currentPrice * 0.985).toFixed(2)), prob: Math.min(98, baseProb + 13) },
-        { label: "TP2", price: parseFloat((isBullish ? currentPrice * 1.03 : currentPrice * 0.97).toFixed(2)), prob: baseProb },
-        { label: "TP3", price: parseFloat((isBullish ? currentPrice * 1.05 : currentPrice * 0.95).toFixed(2)), prob: Math.max(25, baseProb - 17) }
+        { label: "TP1", price: parseFloat((isBullish ? currentPrice * (1 + tfMultiplier * 1.2) : currentPrice * (1 - tfMultiplier * 1.2)).toFixed(2)), prob: Math.min(98, baseProb + 13) },
+        { label: "TP2", price: parseFloat((isBullish ? currentPrice * (1 + tfMultiplier * 2.4) : currentPrice * (1 - tfMultiplier * 2.4)).toFixed(2)), prob: baseProb },
+        { label: "TP3", price: parseFloat((isBullish ? currentPrice * (1 + tfMultiplier * 4.0) : currentPrice * (1 - tfMultiplier * 4.0)).toFixed(2)), prob: Math.max(25, baseProb - 17) }
       ],
-      tpReasoning: "Lokale MCB & RSI Indikator-Berechnung aktiv",
+      tpReasoning: `Lokale MCB & RSI Berechnung aktiv (${tf} Modus)`,
       reasoning: {
-        structure: `Marktstruktur ist ${isBullish ? "bullisch" : "bärisch"} (Preis über/unter SMA).`,
-        keyLevels: `Wichtiges lokales Level bei $${currentPrice.toLocaleString()} erkannt.`,
+        structure: `Marktstruktur im ${tf} ist ${isBullish ? "bullisch" : "bärisch"} (Preis über/unter SMA).`,
+        keyLevels: `Wichtiges lokales Level bei $${currentPrice.toLocaleString()} (${tf}) erkannt.`,
         momentum: `RSI zeigt starkes Momentum mit Abweichung von ${Math.abs(deviation).toFixed(2)}%.`,
-        risk: "Automatisches Risk-Management mit engem Puffer eingerichtet."
+        risk: `Risk-Management angepasst an ${tf} (SL-Abstand: ${(tfMultiplier * 100).toFixed(1)}%).`
       },
       rejections: ["RSI im überkauften Bereich (Vorsicht)", "Volume & Money Flow bewegen sich im Standard-Rahmen"]
     };
@@ -323,7 +335,6 @@ export default function MasterDashboard() {
               <div className="space-y-2">
                 <div className="flex justify-between items-center text-xs text-gray-400 mb-1">
                   <span>Take Profit Targets</span>
-                  {/* VISUELLE ANZEIGE OB KI ODER LOKAL */}
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${analysisType === "ki" ? "bg-blue-600 text-white shadow-sm" : "bg-gray-800 text-gray-400"}`}>
                     {analysisType === "ki" ? "⚡ Gemini KI-Analyse" : "📊 Lokale Berechnung"}
                   </span>
