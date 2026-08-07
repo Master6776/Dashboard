@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const instId = searchParams.get("instId") || "BTC-USDT";
-  const bar = searchParams.get("bar") || "1h";
+  const bar = searchParams.get("bar") || "4h";
 
   try {
     const blofinRes = await fetch(
@@ -27,95 +27,69 @@ export async function GET(request: Request) {
 
     const candles = blofinData.data;
     const currentPrice = parseFloat(candles[0][4]);
-    const isBullish = currentPrice > parseFloat(candles[candles.length - 1][4]);
 
-    const getFallbackData = () => {
-      const multipliers: Record<string, number> = { 
-        "15m": 0.0015, "30m": 0.0025, "1h": 0.0040, "4h": 0.0080, "1d": 0.0150 
-      };
-      const step = currentPrice * (multipliers[bar] || 0.0040);
-      const pos = isBullish ? "Long" : "Short";
-      const baseProb = bar === "15m" ? 68 : bar === "1h" ? 74 : 81;
+    const prompt = `Analysiere diese Marktdaten für ${instId} im ${bar}-Timeframe. Aktueller Preis: ${currentPrice}.
+    Antworte ausschließlich im folgenden JSON-Format, ohne jegliche Markdown-Formatierung wie \`\`\`json:
+    {
+      "symbol": "${instId}",
+      "exchange": "BloFin",
+      "timeframe": "${bar}",
+      "position": "Long",
+      "leverage": "10x",
+      "livePrice": ${currentPrice},
+      "entry": ${currentPrice},
+      "stopLoss": ${currentPrice * 0.98},
+      "probability": 85,
+      "tpLevels": [
+        {"label": "TP1", "price": ${currentPrice * 1.02}, "prob": 90},
+        {"label": "TP2", "price": ${currentPrice * 1.04}, "prob": 75},
+        {"label": "TP3", "price": ${currentPrice * 1.06}, "prob": 60}
+      ],
+      "tpReasoning": "Konservatives Take-Profit-Szenario",
+      "reasoning": {
+        "structure": "Starke bullische Marktstruktur im gewählten Intervall.",
+        "keyLevels": "Wichtige Liquiditätszone identifiziert.",
+        "momentum": "Money Flow zeigt klar nach oben.",
+        "risk": "Gesunder Puffer für Risikomanagement gesetzt."
+      },
+      "rejections": ["Keine negativen Divergenzen", "Volumen bestätigt den Trend"]
+    }`;
 
-      return {
-        symbol: instId.replace("-", ""),
-        exchange: "BloFin",
-        timeframe: bar,
-        position: pos,
-        leverage: "10x",
-        livePrice: currentPrice,
-        entry: currentPrice,
-        stopLoss: Number((isBullish ? currentPrice - (step * 2.2) : currentPrice + (step * 2.2)).toFixed(2)),
-        probability: baseProb,
-        tpLevels: [
-          { label: "TP1", price: Number((isBullish ? currentPrice + step : currentPrice - step).toFixed(2)), prob: baseProb - 2 },
-          { label: "TP2", price: Number((isBullish ? currentPrice + (step * 2) : currentPrice - (step * 2)).toFixed(2)), prob: baseProb - 8 },
-          { label: "TP3", price: Number((isBullish ? currentPrice + (step * 3) : currentPrice - (step * 3)).toFixed(2)), prob: baseProb - 15 },
-          { label: "TP4", price: Number((isBullish ? currentPrice + (step * 4.5) : currentPrice - (step * 4.5)).toFixed(2)), prob: baseProb - 23 }
-        ],
-        tpReasoning: `⚠️ Fallback-Modus (${pos}-Setup für ${bar} skaliert)`,
-        reasoning: {
-          "structure": `${pos}-Struktur im ${bar}-Intervall (Fallback)`,
-          "keyLevels": `Heuristische Cluster für ${bar}`,
-          "momentum": "Orderbuch-Flow aktiv",
-          "risk": "Proportionaler Puffer aktiv"
-        },
-        rejections: ["Nutzung des Fallback-Modus wegen API-Limit oder Quota"]
-      };
-    };
-
-    const prompt = `
-      Analysiere diese BloFin Daten für ${instId} (${bar}). Aktueller Preis: ${currentPrice}.
-      Antworte AUSSCHLIESSLICH im folgenden JSON-Format:
-      {
-        "symbol": "${instId.replace("-", "")}",
-        "exchange": "BloFin",
-        "timeframe": "${bar}",
-        "position": "Long oder Short",
-        "leverage": "10x",
-        "livePrice": ${currentPrice},
-        "entry": ${currentPrice},
-        "stopLoss": 0,
-        "probability": 70,
-        "tpLevels": [
-          {"label": "TP1", "price": 0, "prob": 68},
-          {"label": "TP2", "price": 0, "prob": 60},
-          {"label": "TP3", "price": 0, "prob": 55},
-          {"label": "TP4", "price": 0, "prob": 50}
-        ],
-        "tpReasoning": "KI-Analyse",
-        "reasoning": {"structure": "", "keyLevels": "", "momentum": "", "risk": ""},
-        "rejections": [""]
-      }
-    `;
-
+    // Hilfsfunktion mit automatischem Retry bei Überlastung (503)
     let response;
-    let aiSuccess = false;
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-2.0-flash", // Korrekter und stabiler Standard für das SDK
-        contents: prompt,
-      });
-      aiSuccess = true;
-    } catch (err: any) {
-      console.error("API FEHLER:", err?.message || err);
-    }
-
-    let aiData;
-    if (aiSuccess && response?.text) {
+    while (attempts < maxAttempts) {
       try {
-        const cleaned = response.text.replace(/```json/g, "").replace(/```/g, "").trim();
-        aiData = JSON.parse(cleaned);
-      } catch (e) {
-        aiData = getFallbackData();
+        attempts++;
+        response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+        });
+        break; // Wenn erfolgreich, Schleife verlassen
+      } catch (err: any) {
+        if (err?.status === 503 && attempts < maxAttempts) {
+          console.warn(`Gemini überlastet (503), Versuch ${attempts} fehlgeschlagen. Neuer Versuch in 1.5s...`);
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        } else {
+          throw err; // Anderen Fehler direkt weiterwerfen
+        }
       }
-    } else {
-      aiData = getFallbackData();
     }
 
-    return NextResponse.json({ code: "0", msg: "success", data: aiData });
+    let aiText = response?.text || "{}";
+    aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+    
+    const parsedData = JSON.parse(aiText);
+
+    return NextResponse.json({
+      code: "0",
+      data: parsedData,
+    });
+
   } catch (error: any) {
-    return NextResponse.json({ code: "500", msg: error.message }, { status: 500 });
+    console.error("API FEHLER:", error);
+    return NextResponse.json({ code: "500", msg: "Fehler bei der KI-Analyse." }, { status: 500 });
   }
 }
