@@ -38,6 +38,52 @@ export default function MasterDashboard() {
   const [timeLeft, setTimeLeft] = useState<string>("--:--");
   const [onlyHighProb, setOnlyHighProb] = useState(false);
 
+  const [autoRefreshMin, setAutoRefreshMin] = useState<number>(0);
+  const [autoRefreshTimeLeft, setAutoRefreshTimeLeft] = useState<number>(0);
+
+  // 🔔 TELEGRAM ALERT FUNKTION
+  async function sendTelegramAlert(message: string) {
+    const token = "8856710299:AAHK-5bezNGddHFNTlfkAaqYvhlVS7X0MJc";
+    const chatId = "1688952472";
+    
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: message,
+          parse_mode: "Markdown"
+        })
+      });
+    } catch (e) {
+      console.error("Telegram Fehler:", e);
+    }
+  }
+
+  // Auto-Refresh Intervall & Countdown Logik
+  useEffect(() => {
+    if (autoRefreshMin <= 0) {
+      setAutoRefreshTimeLeft(0);
+      return;
+    }
+
+    const totalSeconds = autoRefreshMin * 60;
+    setAutoRefreshTimeLeft(totalSeconds);
+
+    const timerInterval = setInterval(() => {
+      setAutoRefreshTimeLeft((prev) => {
+        if (prev <= 1) {
+          scanAllTimeframesAutoForceHighProb();
+          return totalSeconds;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, [autoRefreshMin, selectedSymbol]);
+
   async function checkHigherTimeframeTrends() {
     try {
       const trends: any = {};
@@ -70,7 +116,7 @@ export default function MasterDashboard() {
     checkHigherTimeframeTrends();
   }, [selectedSymbol]);
 
-  function calculateSignals(candles: any[], symbol: string, tf: string): DashboardData {
+  function calculateSignals(candles: any[], symbol: string, tf: string, forceHighProb: boolean = false): DashboardData {
     setAnalysisType("lokal");
     const closes = candles.map((c: any) => parseFloat(c[4])).reverse();
     const currentPrice = closes[closes.length - 1];
@@ -91,7 +137,8 @@ export default function MasterDashboard() {
     
     let finalProbability = Math.min(98, Math.max(20, cipherEval.score + probModifier));
 
-    if (onlyHighProb && finalProbability < 70) {
+    const filterActive = forceHighProb || onlyHighProb;
+    if (filterActive && finalProbability < 70) {
       position = "Neutral";
     }
 
@@ -116,7 +163,7 @@ export default function MasterDashboard() {
         momentum: `Trendrichtung ist ${cipherEval.trend}.`,
         risk: `Risk-Management angepasst an ${tf} (SL-Abstand: ${(tfMultiplier * 100).toFixed(1)}%).`
       },
-      rejections: finalProbability < 70 ? ["⚠️ Wahrscheinlichkeit unter 70% (Warten empfohlen)"] : [`Timeframe ${tf} erfolgreich validiert`, "Hohe Konfluenz erreicht"]
+      rejections: (filterActive && finalProbability < 70) ? ["⚠️ Wahrscheinlichkeit unter 70% (Neutral gestellt)"] : [`Timeframe ${tf} erfolgreich validiert`, "Hohe Konfluenz erreicht"]
     };
   }
 
@@ -126,7 +173,7 @@ export default function MasterDashboard() {
         const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${selectedSymbol}&bar=${selectedTimeframe}&limit=100`);
         const json = await res.json();
         if (json.data?.length > 0) {
-          setData(calculateSignals(json.data, selectedSymbol, selectedTimeframe));
+          setData(calculateSignals(json.data, selectedSymbol, selectedTimeframe, false));
 
           const formattedCandles = json.data.map((c: any) => ({
             open: parseFloat(c[1]),
@@ -144,7 +191,7 @@ export default function MasterDashboard() {
     loadData();
   }, [selectedSymbol, selectedTimeframe, onlyHighProb]);
 
-  // Multi-TF Scanner (Findet das beste Setup über alle Timeframes)
+  // Multi-TF Scanner (Manuell)
   async function scanAllTimeframes() {
     setLoadingScan(true);
     try {
@@ -155,13 +202,17 @@ export default function MasterDashboard() {
         const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${selectedSymbol}&bar=${tfObj.value}&limit=100`);
         const json = await res.json();
         if (json.data?.length > 0) {
-          const result = calculateSignals(json.data, selectedSymbol, tfObj.value);
+          const result = calculateSignals(json.data, selectedSymbol, tfObj.value, false);
+          
+          if (onlyHighProb && result.probability < 70) continue;
+
           if (result.probability > highestProb) {
             highestProb = result.probability;
             bestSignal = result;
           }
         }
       }
+      
       if (bestSignal) {
         setSelectedTimeframe(bestSignal.timeframe);
         setData(bestSignal);
@@ -171,7 +222,45 @@ export default function MasterDashboard() {
     }
   }
 
-  // 1. Normale KI-Analyse (Nur für den aktuell ausgewählten Timeframe)
+  // Multi-TF Scanner (Auto-Refresh mit Telegram Alarm)
+  async function scanAllTimeframesAutoForceHighProb() {
+    try {
+      let bestSignal: DashboardData | null = null;
+      let highestProb = -1;
+
+      for (const tfObj of TIMEFRAMES) {
+        const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${selectedSymbol}&bar=${tfObj.value}&limit=100`);
+        const json = await res.json();
+        if (json.data?.length > 0) {
+          const result = calculateSignals(json.data, selectedSymbol, tfObj.value, true);
+          
+          if (result.probability < 70) continue;
+
+          if (result.probability > highestProb) {
+            highestProb = result.probability;
+            bestSignal = result;
+          }
+        }
+      }
+      
+      if (bestSignal && bestSignal.probability >= 70) {
+        setSelectedTimeframe(bestSignal.timeframe);
+        setData(bestSignal);
+
+        // 🔔 Telegram Benachrichtigung absenden
+        sendTelegramAlert(
+          `🚨 *Neues Top-Signal gefunden!*\n\n` +
+          `🪙 Coin: \`${bestSignal.symbol}\`\n` +
+          `⏱️ Timeframe: \`${bestSignal.timeframe}\`\n` +
+          `📊 Richtung: *${bestSignal.position}*\n` +
+          `🎯 Wahrscheinlichkeit: *${bestSignal.probability}%*\n` +
+          `💵 Entry: \`$${bestSignal.entry}\`\n` +
+          `🛑 Stop-Loss: \`$${bestSignal.stopLoss}\``
+        );
+      }
+    } catch (e) { console.error("Auto-Scan Fehler", e); }
+  }
+
   async function fetchAIAnalysis() {
     setLoadingAI(true);
     try {
@@ -195,16 +284,13 @@ export default function MasterDashboard() {
       const json = await res.json();
       if (json.code === "0" && json.data) {
         let resData = json.data;
-        if (onlyHighProb && resData.probability < 70) {
-          resData.position = "Neutral";
-        }
+        if (onlyHighProb && resData.probability < 70) resData.position = "Neutral";
         setData(resData);
         setAnalysisType("ki");
       }
     } finally { setLoadingAI(false); }
   }
 
-  // 2. Multi-TF KI-Analyse (Schickt alle Timeframes an die KI)
   async function fetchMultiTimeframeAIAnalysis() {
     setLoadingMultiAI(true);
     try {
@@ -242,14 +328,22 @@ export default function MasterDashboard() {
       const json = await res.json();
       if (json.code === "0" && json.data) {
         let resData = json.data;
-        if (onlyHighProb && resData.probability < 70) {
-          resData.position = "Neutral";
-        }
+        if (onlyHighProb && resData.probability < 70) resData.position = "Neutral";
         setData(resData);
         setAnalysisType("ki");
       }
     } finally { setLoadingMultiAI(false); }
   }
+
+  const formatCountdown = (totalSeconds: number) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    if (h > 0) {
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
 
   return (
     <main className="min-h-screen bg-[#0a0c10] text-gray-200 p-6 font-sans">
@@ -260,7 +354,7 @@ export default function MasterDashboard() {
           </h1>
           <p className="text-xs text-gray-400 mb-2">Realtime Analysis powered by BloFin, VuManChu Cipher A & B</p>
           
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {trendData && (
               <div className="flex items-center gap-3 px-3 py-1 bg-[#121620] rounded-lg border border-gray-800 w-fit">
                 <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Grosswetterlage:</span>
@@ -276,6 +370,36 @@ export default function MasterDashboard() {
             >
               {onlyHighProb ? "🎯 Nur High-Prob (>70%) AN" : "🎯 High-Prob Filter AUS"}
             </button>
+
+            {/* 🧪 BOT TEST BUTTON */}
+            <button
+              onClick={() => {
+                sendTelegramAlert("🚨 *Test-Signal erfolgreich!* Dein Telegram-Bot funktioniert perfekt.");
+              }}
+              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow transition-all"
+            >
+              🧪 Bot Testen
+            </button>
+
+            <div className="flex items-center gap-2 bg-[#121620] px-2.5 py-1 rounded-lg border border-gray-800">
+              <span className="text-[10px] text-gray-400 font-bold uppercase">Auto-Scan:</span>
+              <select
+                value={autoRefreshMin}
+                onChange={(e) => setAutoRefreshMin(Number(e.target.value))}
+                className="bg-[#0a0c10] text-xs font-medium text-emerald-400 border border-gray-800 rounded px-2 py-0.5 outline-none cursor-pointer"
+              >
+                <option value={0}>Aus</option>
+                <option value={15}>15 Min</option>
+                <option value={30}>30 Min</option>
+                <option value={60}>60 Min</option>
+              </select>
+
+              {autoRefreshMin > 0 && (
+                <span className="text-xs text-orange-400 font-mono font-semibold bg-orange-950/40 px-2 py-0.5 rounded border border-orange-900/50">
+                  ⏳ {formatCountdown(autoRefreshTimeLeft)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
