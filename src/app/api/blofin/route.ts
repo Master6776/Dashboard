@@ -3,75 +3,78 @@ import { GoogleGenAI } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const instId = searchParams.get('instId') || 'BTC-USDT';
-  const bar = searchParams.get('bar');
-
+export async function POST(req: Request) {
   try {
-    let multiTfData: Record<string, any> = {};
+    const body = await req.json();
+    const { instId, bar, indicators, multiTf } = body;
 
-    if (bar) {
-      const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${instId}&bar=${bar}&limit=20`);
-      const json = await res.json();
-      if (json.data) multiTfData[bar] = json.data;
-    } else {
-      // Multi-TF Scan inkl. 1D und 1W für die KI-Analyse (Limit auf 15 Kerzen reduziert, um Token-Limits zu schonen)
-      const timeframes = ['15m', '30m', '1h', '4h', '1d', '1w'];
-      for (const tf of timeframes) {
-        const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${instId}&bar=${tf}&limit=15`);
-        const json = await res.json();
-        if (json.data) multiTfData[tf] = json.data;
-      }
-    }
+    // Aktuelle Kerzen von BloFin laden, um der KI echte Preisdaten zu geben
+    const response = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${instId || 'BTC-USDT'}&bar=${bar || '4h'}&limit=50`);
+    const json = await response.json();
+    const candles = json.data || [];
+    const currentPrice = candles.length > 0 ? parseFloat(candles[0][4]) : 0;
+
+    // Indikatoren aufbereiten für den Prompt
+    const vmc = indicators?.vuManChu || {};
+    const trends = indicators?.trend || {};
 
     const prompt = `
-    Analysiere die Marktdaten für ${instId}. Daten: ${JSON.stringify(multiTfData)}
-    Berücksichtige den übergeordneten Trend (1D & 1W).
-    Erstelle eine professionelle Trading-Analyse.
-    WICHTIG: Antworte AUSSCHLIESSLICH mit einem validen JSON-Objekt. Verwende KEIN Markdown, keine Backticks (\`\`\`), keinen zusätzlichen Text.
-    {
-      "symbol": "${instId}",
-      "exchange": "BloFin",
-      "timeframe": "${bar ? bar : "Multi-TF (inkl. 1D/1W)"}",
-      "position": "Long",
-      "leverage": "10x",
-      "livePrice": 64332.6,
-      "entry": 64332.6,
-      "stopLoss": 63367.61,
-      "probability": 72,
-      "tpLevels": [
-        {"label": "TP1", "price": 65297.59, "prob": 85},
-        {"label": "TP2", "price": 66262.58, "prob": 72},
-        {"label": "TP3", "price": 67549.23, "prob": 55}
-      ],
-      "tpReasoning": "Begründung basierend auf Trend-Konfluenz",
-      "reasoning": {
-        "structure": "Trend-Analyse über 4h/1d/1w",
-        "keyLevels": "Support/Resistance",
-        "momentum": "RSI & Money Flow",
-        "risk": "Risikomanagement"
-      },
-      "rejections": ["RSI im überkauften Bereich (Vorsicht)", "Volume & Money Flow bewegen sich im Standard-Rahmen"]
-    }
+      Du bist ein professioneller Krypto-Algorithmus und Trader. Analysiere folgendes Setup basierend auf harten technischen Indikatoren:
+      - Instrument: ${instId}
+      - Timeframe: ${bar || 'Multi-TF'}
+      - Aktueller Preis: ${currentPrice}
+      
+      Live Indikatoren (VuManChu Cipher B & MFI & Trend):
+      - VuManChu Buy-Signal aktiv: ${vmc.buySignal ? 'JA' : 'NEIN'}
+      - VuManChu Sell-Signal aktiv: ${vmc.sellSignal ? 'JA' : 'NEIN'}
+      - Money Flow (MFI) Inflow (Grün): ${vmc.mfiIsGreen ? 'JA' : 'NEIN'}
+      - WaveTrend Werte: WT1 = ${vmc.wt1 || 0}, WT2 = ${vmc.wt2 || 0}
+      - Übergeordnete Trends: 1D = ${trends['1d'] || 'Unbekannt'}, 1W = ${trends['1w'] || 'Unbekannt'}
+
+      Gib Deine Analyse EXAKT als valides JSON-Objekt zurück (ohne Markdown-Bloecke, ohne Erklärungen drumherum), mit exakt folgender Struktur:
+      {
+        "symbol": "${instId}",
+        "exchange": "BloFin",
+        "timeframe": "${bar || '4h'}",
+        "position": "Long",
+        "leverage": "10x",
+        "livePrice": ${currentPrice},
+        "entry": ${currentPrice},
+        "stopLoss": 0,
+        "probability": 50,
+        "tpLevels": [
+          {"label": "TP1", "price": 0, "prob": 60},
+          {"label": "TP2", "price": 0, "prob": 50},
+          {"label": "TP3", "price": 0, "prob": 30}
+        ],
+        "tpReasoning": "Begründung basierend auf VuManChu und MFI",
+        "reasoning": {
+          "structure": "Text zur Marktstruktur",
+          "keyLevels": "Text zu Key Levels",
+          "momentum": "Text zum Momentum",
+          "risk": "Text zum Risk Management"
+        },
+        "rejections": ["Punkt 1", "Punkt 2"]
+      }
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    const aiResponse = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
       contents: prompt,
     });
 
-    const rawText = response.text || "{}";
-    
-    // Extrahiere reines JSON falls das Modell trotz Verbots Markdown nutzt
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const cleanedJsonString = jsonMatch ? jsonMatch[0] : rawText;
+    // Korrigiert: .text ist eine Eigenschaft, keine Funktion ()
+    let text = aiResponse.text; 
+    if (!text) {
+      throw new Error("Keine Antwort von Gemini erhalten.");
+    }
 
-    const parsedData = JSON.parse(cleanedJsonString);
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const resultJson = JSON.parse(text);
 
-    return NextResponse.json({ code: "0", data: parsedData });
+    return NextResponse.json({ code: "0", data: resultJson });
   } catch (error: any) {
-    console.error("API /api/blofin Fehler:", error);
-    return NextResponse.json({ code: "-1", msg: error.message }, { status: 500 });
+    console.error("KI-Fehler:", error);
+    return NextResponse.json({ code: "1", msg: error.message }, { status: 500 });
   }
 }

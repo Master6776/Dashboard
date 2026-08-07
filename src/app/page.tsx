@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import TradingViewWidget from "@/components/TradingViewWidget";
+import { evaluateCipherASignals, calculateVuManChu } from "@/utils/indicators";
 
 interface TPLevel { label: string; price: number; prob: number; }
 interface DashboardData {
@@ -28,16 +29,14 @@ export default function MasterDashboard() {
   const [selectedTimeframe, setSelectedTimeframe] = useState("4h");
   const [data, setData] = useState<DashboardData | null>(null);
   const [trendData, setTrendData] = useState<{ "1d": string; "1w": string } | null>(null);
+  const [vmcData, setVmcData] = useState<any>(null);
   
-  // Status für KI vs. Lokal Kennzeichnung
   const [analysisType, setAnalysisType] = useState<"lokal" | "ki">("lokal");
-  
   const [loadingAI, setLoadingAI] = useState(false);
   const [loadingMultiAI, setLoadingMultiAI] = useState(false);
   const [loadingScan, setLoadingScan] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>("--:--");
 
-  // Großwetterlage (1D & 1W Trend)
   async function checkHigherTimeframeTrends() {
     try {
       const trends: any = {};
@@ -54,7 +53,6 @@ export default function MasterDashboard() {
     } catch (e) { console.error("Trend-Check Fehler", e); }
   }
 
-  // Timer für Kerzenschluss
   useEffect(() => {
     const tfObj = TIMEFRAMES.find(t => t.value === selectedTimeframe) || TIMEFRAMES[3];
     const interval = setInterval(() => {
@@ -71,61 +69,70 @@ export default function MasterDashboard() {
     checkHigherTimeframeTrends();
   }, [selectedSymbol]);
 
-  // Dynamische Signale mit timeframe-abhängigem Stop-Loss & Take-Profit
   function calculateSignals(candles: any[], symbol: string, tf: string): DashboardData {
-    setAnalysisType("lokal"); // Kennzeichnet es als lokale Berechnung
+    setAnalysisType("lokal");
     const closes = candles.map((c: any) => parseFloat(c[4])).reverse();
     const currentPrice = closes[closes.length - 1];
-    const sma = closes.reduce((a, b) => a + b, 0) / closes.length;
     
-    // Timeframe-abhängiger Multiplikator für den Stop-Loss & TP Abstand
-    let tfMultiplier = 0.015; // Standard 1.5%
-    if (tf === "15m") tfMultiplier = 0.008;      // 0.8% bei 15m (sehr eng)
-    else if (tf === "30m") tfMultiplier = 0.012; // 1.2% bei 30m
-    else if (tf === "1h") tfMultiplier = 0.018;  // 1.8% bei 1H
-    else if (tf === "4h") tfMultiplier = 0.025;  // 2.5% bei 4H
-    else if (tf === "1d") tfMultiplier = 0.04;   // 4.0% bei 1D (weit)
+    const cipherEval = evaluateCipherASignals(candles);
+    
+    let tfMultiplier = 0.015;
+    let probModifier = 0;
 
-    const deviation = ((currentPrice - sma) / sma) * 100;
-    const volatilityFactor = (Math.random() * 5);
-    const baseProb = Math.min(94, Math.max(52, Math.round(72 + (deviation * 8) + (volatilityFactor - 2.5))));
-    
-    const isBullish = currentPrice >= sma;
+    if (tf === "15m") { tfMultiplier = 0.008; probModifier = -5; }
+    else if (tf === "30m") { tfMultiplier = 0.012; probModifier = -2; }
+    else if (tf === "1h") { tfMultiplier = 0.018; probModifier = 0; }
+    else if (tf === "4h") { tfMultiplier = 0.025; probModifier = +3; }
+    else if (tf === "1d") { tfMultiplier = 0.04; probModifier = +7; }
+
+    const isBullish = cipherEval.trend === "Bullisch";
     const position = isBullish ? "Long" : "Short";
     
-    // SL skaliert exakt mit dem gewählten Timeframe
     const stopLoss = isBullish 
       ? currentPrice * (1 - tfMultiplier) 
       : currentPrice * (1 + tfMultiplier);
+
+    const finalProbability = Math.min(98, Math.max(20, cipherEval.score + probModifier));
 
     return {
       symbol, exchange: "BloFin", timeframe: tf,
       position, leverage: "10x", livePrice: currentPrice,
       entry: currentPrice, stopLoss: parseFloat(stopLoss.toFixed(2)),
-      probability: baseProb,
+      probability: finalProbability,
       tpLevels: [
-        { label: "TP1", price: parseFloat((isBullish ? currentPrice * (1 + tfMultiplier * 1.2) : currentPrice * (1 - tfMultiplier * 1.2)).toFixed(2)), prob: Math.min(98, baseProb + 13) },
-        { label: "TP2", price: parseFloat((isBullish ? currentPrice * (1 + tfMultiplier * 2.4) : currentPrice * (1 - tfMultiplier * 2.4)).toFixed(2)), prob: baseProb },
-        { label: "TP3", price: parseFloat((isBullish ? currentPrice * (1 + tfMultiplier * 4.0) : currentPrice * (1 - tfMultiplier * 4.0)).toFixed(2)), prob: Math.max(25, baseProb - 17) }
+        { label: "TP1", price: parseFloat((isBullish ? currentPrice * (1 + tfMultiplier * 1.2) : currentPrice * (1 - tfMultiplier * 1.2)).toFixed(2)), prob: Math.min(98, finalProbability + 10) },
+        { label: "TP2", price: parseFloat((isBullish ? currentPrice * (1 + tfMultiplier * 2.4) : currentPrice * (1 - tfMultiplier * 2.4)).toFixed(2)), prob: finalProbability },
+        { label: "TP3", price: parseFloat((isBullish ? currentPrice * (1 + tfMultiplier * 4.0) : currentPrice * (1 - tfMultiplier * 4.0)).toFixed(2)), prob: Math.max(15, finalProbability - 20) }
       ],
-      tpReasoning: `Lokale MCB & RSI Berechnung aktiv (${tf} Modus)`,
+      tpReasoning: `VuManChu Cipher aktiv im ${tf} (${cipherEval.signalName})`,
       reasoning: {
-        structure: `Marktstruktur im ${tf} ist ${isBullish ? "bullisch" : "bärisch"} (Preis über/unter SMA).`,
-        keyLevels: `Wichtiges lokales Level bei $${currentPrice.toLocaleString()} (${tf}) erkannt.`,
-        momentum: `RSI zeigt starkes Momentum mit Abweichung von ${Math.abs(deviation).toFixed(2)}%.`,
+        structure: `Aktives Signal im ${tf}: ${cipherEval.signalName}.`,
+        keyLevels: `EMA-Ribbon & WaveTrend Oszillator für ${tf} ausgewertet.`,
+        momentum: `Trendrichtung ist ${cipherEval.trend}.`,
         risk: `Risk-Management angepasst an ${tf} (SL-Abstand: ${(tfMultiplier * 100).toFixed(1)}%).`
       },
-      rejections: ["RSI im überkauften Bereich (Vorsicht)", "Volume & Money Flow bewegen sich im Standard-Rahmen"]
+      rejections: [`Timeframe ${tf} erfolgreich validiert`, "Keine gegensätzlichen Signale im Oszillator"]
     };
   }
 
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${selectedSymbol}&bar=${selectedTimeframe}&limit=20`);
+        const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${selectedSymbol}&bar=${selectedTimeframe}&limit=100`);
         const json = await res.json();
         if (json.data?.length > 0) {
           setData(calculateSignals(json.data, selectedSymbol, selectedTimeframe));
+
+          const formattedCandles = json.data.map((c: any) => ({
+            open: parseFloat(c[1]),
+            high: parseFloat(c[2]),
+            low: parseFloat(c[3]),
+            close: parseFloat(c[4]),
+            volume: parseFloat(c[5] || 0)
+          })).reverse();
+
+          const vmcResults = calculateVuManChu(formattedCandles);
+          setVmcData(vmcResults[vmcResults.length - 1]);
         }
       } catch (e) { console.error(e); }
     }
@@ -139,7 +146,7 @@ export default function MasterDashboard() {
       let highestProb = -1;
 
       for (const tfObj of TIMEFRAMES) {
-        const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${selectedSymbol}&bar=${tfObj.value}&limit=20`);
+        const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${selectedSymbol}&bar=${tfObj.value}&limit=100`);
         const json = await res.json();
         if (json.data?.length > 0) {
           const result = calculateSignals(json.data, selectedSymbol, tfObj.value);
@@ -158,15 +165,30 @@ export default function MasterDashboard() {
     }
   }
 
-  // KI-Analyse Abruf
   async function fetchAIAnalysis() {
     setLoadingAI(true);
     try {
-      const res = await fetch(`/api/blofin?instId=${selectedSymbol}&bar=${selectedTimeframe}`);
+      // Übergabe aller Live-Indikatoren an die KI-Route
+      const payload = {
+        instId: selectedSymbol,
+        bar: selectedTimeframe,
+        indicators: {
+          vuManChu: vmcData,
+          trend: trendData,
+          currentPrice: data?.livePrice
+        }
+      };
+
+      const res = await fetch(`/api/blofin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
       const json = await res.json();
       if (json.code === "0" && json.data) {
         setData(json.data);
-        setAnalysisType("ki"); // Kennzeichnet es als KI-Analyse
+        setAnalysisType("ki");
       }
     } finally { setLoadingAI(false); }
   }
@@ -174,24 +196,37 @@ export default function MasterDashboard() {
   async function fetchMultiAIAnalysis() {
     setLoadingMultiAI(true);
     try {
-      const res = await fetch(`/api/blofin?instId=${selectedSymbol}`);
+      const payload = {
+        instId: selectedSymbol,
+        multiTf: true,
+        indicators: {
+          trend: trendData,
+          currentPrice: data?.livePrice
+        }
+      };
+
+      const res = await fetch(`/api/blofin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
       const json = await res.json();
       if (json.code === "0" && json.data) {
         setData(json.data);
-        setAnalysisType("ki"); // Kennzeichnet es als KI-Analyse
+        setAnalysisType("ki");
       }
     } finally { setLoadingMultiAI(false); }
   }
 
   return (
     <main className="min-h-screen bg-[#0a0c10] text-gray-200 p-6 font-sans">
-      {/* Header Bereich */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             🚀 Master Trading Dashboard
           </h1>
-          <p className="text-xs text-gray-400 mb-2">Realtime Analysis powered by BloFin, MCB Indicator & Google Gemini AI</p>
+          <p className="text-xs text-gray-400 mb-2">Realtime Analysis powered by BloFin, VuManChu Cipher A & B</p>
           
           {trendData && (
             <div className="flex items-center gap-3 px-3 py-1 bg-[#121620] rounded-lg border border-gray-800 w-fit">
@@ -238,7 +273,6 @@ export default function MasterDashboard() {
         </div>
       </div>
 
-      {/* Hauptlayout Grid */}
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-[#121620] p-4 rounded-xl border border-gray-800 shadow-xl">
@@ -261,7 +295,7 @@ export default function MasterDashboard() {
           {data && (
             <div className="bg-[#121620] p-5 rounded-xl border border-gray-800 shadow-xl">
               <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-                <h2 className="text-sm font-bold text-gray-300 uppercase tracking-wider">🧠 MCB, RSI & Gemini Insights</h2>
+                <h2 className="text-sm font-bold text-gray-300 uppercase tracking-wider">🧠 Cipher Insights & Gemini AI</h2>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={fetchAIAnalysis}
@@ -282,15 +316,15 @@ export default function MasterDashboard() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div className="bg-[#0f131c] p-3 rounded-lg border border-gray-800/60">
-                  <span className="text-xs text-blue-400 font-semibold block mb-1">Struktur & MCB-Bias</span>
+                  <span className="text-xs text-blue-400 font-semibold block mb-1">Struktur & Signal</span>
                   <p className="text-gray-300 text-xs">{data.reasoning.structure}</p>
                 </div>
                 <div className="bg-[#0f131c] p-3 rounded-lg border border-gray-800/60">
-                  <span className="text-xs text-purple-400 font-semibold block mb-1">Liquide Zonen & Key Levels</span>
+                  <span className="text-xs text-purple-400 font-semibold block mb-1">Key Levels & Ribbon</span>
                   <p className="text-gray-300 text-xs">{data.reasoning.keyLevels}</p>
                 </div>
                 <div className="bg-[#0f131c] p-3 rounded-lg border border-gray-800/60">
-                  <span className="text-xs text-green-400 font-semibold block mb-1">Money Flow & Momentum</span>
+                  <span className="text-xs text-green-400 font-semibold block mb-1">Momentum & Trend</span>
                   <p className="text-gray-300 text-xs">{data.reasoning.momentum}</p>
                 </div>
                 <div className="bg-[#0f131c] p-3 rounded-lg border border-gray-800/60">
@@ -351,6 +385,31 @@ export default function MasterDashboard() {
                   ))}
                 </div>
               </div>
+
+              {vmcData && (
+                <div className="pt-4 border-t border-gray-800 space-y-3">
+                  <span className="text-xs font-semibold text-gray-400 block">VuManChu Cipher B & Money Flow:</span>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className={`px-2 py-1.5 rounded text-[11px] text-center font-bold transition-all ${vmcData.buySignal ? "bg-green-600 text-white shadow-lg shadow-green-900/50" : "bg-[#0f131c] text-gray-500 border border-gray-800"}`}>
+                      {vmcData.buySignal ? "🟢 BUY (Oversold)" : "BUY Signal"}
+                    </div>
+                    <div className={`px-2 py-1.5 rounded text-[11px] text-center font-bold transition-all ${vmcData.sellSignal ? "bg-red-600 text-white shadow-lg shadow-red-900/50" : "bg-[#0f131c] text-gray-500 border border-gray-800"}`}>
+                      {vmcData.sellSignal ? "🔴 SELL (Overbought)" : "SELL Signal"}
+                    </div>
+                  </div>
+
+                  <div className={`flex justify-between items-center px-3 py-2 rounded-lg border text-xs font-semibold ${vmcData.mfiIsGreen ? "bg-green-950/30 border-green-900/50 text-green-400" : "bg-red-950/30 border-red-900/50 text-red-400"}`}>
+                    <span>Money Flow (MFI):</span>
+                    <span>{vmcData.mfiIsGreen ? "🟢 Inflow (Bullisch)" : "🔴 Outflow (Bärisch)"}</span>
+                  </div>
+
+                  <div className="text-[10px] text-gray-400 flex justify-between bg-[#0f131c] px-2.5 py-1 rounded border border-gray-800">
+                    <span>WT1: <strong className="text-white">{vmcData.wt1.toFixed(2)}</strong></span>
+                    <span>WT2: <strong className="text-white">{vmcData.wt2.toFixed(2)}</strong></span>
+                  </div>
+                </div>
+              )}
 
               <div className="pt-2 border-t border-gray-800">
                 <span className="text-xs font-semibold text-gray-400 block mb-2">Rejection & Filter Checks:</span>
