@@ -7,7 +7,7 @@ import { evaluateCipherASignals, calculateVuManChu } from "@/utils/indicators";
 interface TPLevel { label: string; price: number; prob: number; }
 interface DashboardData {
   symbol: string; exchange: string; timeframe: string;
-  position: "Long" | "Short"; leverage: string;
+  position: "Long" | "Short" | "Neutral"; leverage: string;
   livePrice: number; entry: number; stopLoss: number;
   probability: number; tpLevels: TPLevel[];
   tpReasoning: string;
@@ -36,6 +36,7 @@ export default function MasterDashboard() {
   const [loadingMultiAI, setLoadingMultiAI] = useState(false);
   const [loadingScan, setLoadingScan] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>("--:--");
+  const [onlyHighProb, setOnlyHighProb] = useState(false);
 
   async function checkHigherTimeframeTrends() {
     try {
@@ -79,20 +80,24 @@ export default function MasterDashboard() {
     let tfMultiplier = 0.015;
     let probModifier = 0;
 
-    if (tf === "15m") { tfMultiplier = 0.008; probModifier = -5; }
-    else if (tf === "30m") { tfMultiplier = 0.012; probModifier = -2; }
+    if (tf === "15m") { tfMultiplier = 0.008; probModifier = -10; }
+    else if (tf === "30m") { tfMultiplier = 0.012; probModifier = -5; }
     else if (tf === "1h") { tfMultiplier = 0.018; probModifier = 0; }
-    else if (tf === "4h") { tfMultiplier = 0.025; probModifier = +3; }
-    else if (tf === "1d") { tfMultiplier = 0.04; probModifier = +7; }
+    else if (tf === "4h") { tfMultiplier = 0.025; probModifier = +5; }
+    else if (tf === "1d") { tfMultiplier = 0.04; probModifier = +10; }
 
     const isBullish = cipherEval.trend === "Bullisch";
-    const position = isBullish ? "Long" : "Short";
+    let position: "Long" | "Short" | "Neutral" = isBullish ? "Long" : "Short";
     
+    let finalProbability = Math.min(98, Math.max(20, cipherEval.score + probModifier));
+
+    if (onlyHighProb && finalProbability < 70) {
+      position = "Neutral";
+    }
+
     const stopLoss = isBullish 
       ? currentPrice * (1 - tfMultiplier) 
       : currentPrice * (1 + tfMultiplier);
-
-    const finalProbability = Math.min(98, Math.max(20, cipherEval.score + probModifier));
 
     return {
       symbol, exchange: "BloFin", timeframe: tf,
@@ -111,7 +116,7 @@ export default function MasterDashboard() {
         momentum: `Trendrichtung ist ${cipherEval.trend}.`,
         risk: `Risk-Management angepasst an ${tf} (SL-Abstand: ${(tfMultiplier * 100).toFixed(1)}%).`
       },
-      rejections: [`Timeframe ${tf} erfolgreich validiert`, "Keine gegensätzlichen Signale im Oszillator"]
+      rejections: finalProbability < 70 ? ["⚠️ Wahrscheinlichkeit unter 70% (Warten empfohlen)"] : [`Timeframe ${tf} erfolgreich validiert`, "Hohe Konfluenz erreicht"]
     };
   }
 
@@ -137,8 +142,9 @@ export default function MasterDashboard() {
       } catch (e) { console.error(e); }
     }
     loadData();
-  }, [selectedSymbol, selectedTimeframe]);
+  }, [selectedSymbol, selectedTimeframe, onlyHighProb]);
 
+  // Multi-TF Scanner (Findet das beste Setup über alle Timeframes)
   async function scanAllTimeframes() {
     setLoadingScan(true);
     try {
@@ -165,13 +171,14 @@ export default function MasterDashboard() {
     }
   }
 
+  // 1. Normale KI-Analyse (Nur für den aktuell ausgewählten Timeframe)
   async function fetchAIAnalysis() {
     setLoadingAI(true);
     try {
-      // Übergabe aller Live-Indikatoren an die KI-Route
       const payload = {
         instId: selectedSymbol,
         bar: selectedTimeframe,
+        onlyHighProb: onlyHighProb,
         indicators: {
           vuManChu: vmcData,
           trend: trendData,
@@ -187,19 +194,40 @@ export default function MasterDashboard() {
       
       const json = await res.json();
       if (json.code === "0" && json.data) {
-        setData(json.data);
+        let resData = json.data;
+        if (onlyHighProb && resData.probability < 70) {
+          resData.position = "Neutral";
+        }
+        setData(resData);
         setAnalysisType("ki");
       }
     } finally { setLoadingAI(false); }
   }
 
-  async function fetchMultiAIAnalysis() {
+  // 2. Multi-TF KI-Analyse (Schickt alle Timeframes an die KI)
+  async function fetchMultiTimeframeAIAnalysis() {
     setLoadingMultiAI(true);
     try {
+      const multiTfSummary: any = {};
+      for (const tfObj of TIMEFRAMES) {
+        const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${selectedSymbol}&bar=${tfObj.value}&limit=30`);
+        const json = await res.json();
+        if (json.data?.length > 0) {
+          const closes = json.data.map((c: any) => parseFloat(c[4]));
+          multiTfSummary[tfObj.value] = {
+            price: closes[0],
+            trend: closes[0] > closes[closes.length - 1] ? "Bullisch" : "Bärisch"
+          };
+        }
+      }
+
       const payload = {
         instId: selectedSymbol,
-        multiTf: true,
+        bar: selectedTimeframe,
+        onlyHighProb: onlyHighProb,
+        multiTf: multiTfSummary,
         indicators: {
+          vuManChu: vmcData,
           trend: trendData,
           currentPrice: data?.livePrice
         }
@@ -210,10 +238,14 @@ export default function MasterDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
+      
       const json = await res.json();
       if (json.code === "0" && json.data) {
-        setData(json.data);
+        let resData = json.data;
+        if (onlyHighProb && resData.probability < 70) {
+          resData.position = "Neutral";
+        }
+        setData(resData);
         setAnalysisType("ki");
       }
     } finally { setLoadingMultiAI(false); }
@@ -228,14 +260,23 @@ export default function MasterDashboard() {
           </h1>
           <p className="text-xs text-gray-400 mb-2">Realtime Analysis powered by BloFin, VuManChu Cipher A & B</p>
           
-          {trendData && (
-            <div className="flex items-center gap-3 px-3 py-1 bg-[#121620] rounded-lg border border-gray-800 w-fit">
-              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Grosswetterlage:</span>
-              <span className={`text-xs font-semibold ${trendData["1d"] === "Bullisch" ? "text-green-400" : "text-red-400"}`}>1D: {trendData["1d"]}</span>
-              <span className="text-gray-700">|</span>
-              <span className={`text-xs font-semibold ${trendData["1w"] === "Bullisch" ? "text-green-400" : "text-red-400"}`}>1W: {trendData["1w"]}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {trendData && (
+              <div className="flex items-center gap-3 px-3 py-1 bg-[#121620] rounded-lg border border-gray-800 w-fit">
+                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Grosswetterlage:</span>
+                <span className={`text-xs font-semibold ${trendData["1d"] === "Bullisch" ? "text-green-400" : "text-red-400"}`}>1D: {trendData["1d"]}</span>
+                <span className="text-gray-700">|</span>
+                <span className={`text-xs font-semibold ${trendData["1w"] === "Bullisch" ? "text-green-400" : "text-red-400"}`}>1W: {trendData["1w"]}</span>
+              </div>
+            )}
+            
+            <button
+              onClick={() => setOnlyHighProb(!onlyHighProb)}
+              className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all ${onlyHighProb ? "bg-emerald-600 border-emerald-500 text-white shadow-lg" : "bg-[#121620] border-gray-800 text-gray-400 hover:text-white"}`}
+            >
+              {onlyHighProb ? "🎯 Nur High-Prob (>70%) AN" : "🎯 High-Prob Filter AUS"}
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -300,16 +341,17 @@ export default function MasterDashboard() {
                   <button
                     onClick={fetchAIAnalysis}
                     disabled={loadingAI}
-                    className="px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow transition-all disabled:opacity-50"
+                    className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition-all disabled:opacity-50"
                   >
                     {loadingAI ? "Analysiere..." : "⚡ Deep KI-Analyse"}
                   </button>
+
                   <button
-                    onClick={fetchMultiAIAnalysis}
+                    onClick={fetchMultiTimeframeAIAnalysis}
                     disabled={loadingMultiAI}
-                    className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold rounded-lg shadow transition-all disabled:opacity-50"
+                    className="px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow transition-all disabled:opacity-50"
                   >
-                    {loadingMultiAI ? "Multi-KI..." : "✨ Multi-TF KI-Analyse"}
+                    {loadingMultiAI ? "Multi-TF KI..." : "⚡ Multi-TF Deep KI"}
                   </button>
                 </div>
               </div>
@@ -336,21 +378,20 @@ export default function MasterDashboard() {
           )}
         </div>
 
-        {/* Rechte Sidebar */}
         <div>
           {data && (
             <div className="bg-[#121620] p-5 rounded-xl border border-gray-800 shadow-xl space-y-6">
               <div className="flex justify-between items-center pb-4 border-b border-gray-800">
                 <div>
-                  <span className={`inline-block px-3 py-1 rounded-md text-xs font-bold tracking-wide ${data.position === "Long" ? "bg-green-500/20 text-green-400 border border-green-500/30" : "bg-red-500/20 text-red-400 border border-red-500/30"}`}>
-                    {data.position.toUpperCase()} ({data.leverage})
+                  <span className={`inline-block px-3 py-1 rounded-md text-xs font-bold tracking-wide ${data.position === "Long" ? "bg-green-500/20 text-green-400 border border-green-500/30" : data.position === "Short" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"}`}>
+                    {data.position.toUpperCase()} {data.position !== "Neutral" && `(${data.leverage})`}
                   </span>
                   <div className="text-xs text-gray-400 mt-1">
                     Exchange: <span className="text-white font-medium">{data.exchange}</span> | TF: <span className="text-purple-400 font-semibold">{data.timeframe}</span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-extrabold text-white">{data.probability}%</div>
+                  <div className={`text-2xl font-extrabold ${data.probability >= 70 ? "text-emerald-400" : "text-yellow-400"}`}>{data.probability}%</div>
                   <span className="text-[10px] text-gray-400 uppercase tracking-wider">Wahrscheinlichkeit</span>
                 </div>
               </div>
@@ -370,7 +411,7 @@ export default function MasterDashboard() {
                 <div className="flex justify-between items-center text-xs text-gray-400 mb-1">
                   <span>Take Profit Targets</span>
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${analysisType === "ki" ? "bg-blue-600 text-white shadow-sm" : "bg-gray-800 text-gray-400"}`}>
-                    {analysisType === "ki" ? "⚡ Gemini KI-Analyse" : "📊 Lokale Berechnung"}
+                    {analysisType === "ki" ? "⚡ Gemini KI" : "📊 Algorithmus"}
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -405,8 +446,8 @@ export default function MasterDashboard() {
                   </div>
 
                   <div className="text-[10px] text-gray-400 flex justify-between bg-[#0f131c] px-2.5 py-1 rounded border border-gray-800">
-                    <span>WT1: <strong className="text-white">{vmcData.wt1.toFixed(2)}</strong></span>
-                    <span>WT2: <strong className="text-white">{vmcData.wt2.toFixed(2)}</strong></span>
+                    <span>WT1: <strong className="text-white">{typeof vmcData.wt1 === 'number' ? vmcData.wt1.toFixed(2) : '0.00'}</strong></span>
+                    <span>WT2: <strong className="text-white">{typeof vmcData.wt2 === 'number' ? vmcData.wt2.toFixed(2) : '0.00'}</strong></span>
                   </div>
                 </div>
               )}
