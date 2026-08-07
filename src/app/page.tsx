@@ -15,6 +15,12 @@ interface DashboardData {
   rejections: string[];
 }
 
+interface TFOverviewItem {
+  timeframe: string;
+  position: "Long" | "Short" | "Neutral";
+  probability: number;
+}
+
 const SYMBOLS = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "XRP-USDT", "ADA-USDT"];
 const TIMEFRAMES = [
   { label: "15m", value: "15m", seconds: 900 },
@@ -31,6 +37,7 @@ export default function MasterDashboard() {
   const [trendData, setTrendData] = useState<{ "1d": string; "1w": string } | null>(null);
   const [vmcData, setVmcData] = useState<any>(null);
   
+  const [tfOverview, setTfOverview] = useState<TFOverviewItem[]>([]);
   const [analysisType, setAnalysisType] = useState<"lokal" | "ki">("lokal");
   const [loadingAI, setLoadingAI] = useState(false);
   const [loadingMultiAI, setLoadingMultiAI] = useState(false);
@@ -114,7 +121,30 @@ export default function MasterDashboard() {
 
   useEffect(() => {
     checkHigherTimeframeTrends();
+    updateTimeframeOverview();
   }, [selectedSymbol]);
+
+  // Aktualisiert die Schnell-Übersicht aller Timeframes
+  async function updateTimeframeOverview() {
+    try {
+      const overview: TFOverviewItem[] = [];
+      for (const tfObj of TIMEFRAMES) {
+        const res = await fetch(`https://openapi.blofin.com/api/v1/market/candles?instId=${selectedSymbol}&bar=${tfObj.value}&limit=100`);
+        const json = await res.json();
+        if (json.data?.length > 0) {
+          const result = calculateSignals(json.data, selectedSymbol, tfObj.value, false);
+          overview.push({
+            timeframe: tfObj.label,
+            position: result.position,
+            probability: result.probability
+          });
+        }
+      }
+      setTfOverview(overview);
+    } catch (e) {
+      console.error("TF Overview Fehler", e);
+    }
+  }
 
   function calculateSignals(candles: any[], symbol: string, tf: string, forceHighProb: boolean = false): DashboardData {
     setAnalysisType("lokal");
@@ -217,6 +247,7 @@ export default function MasterDashboard() {
         setSelectedTimeframe(bestSignal.timeframe);
         setData(bestSignal);
       }
+      updateTimeframeOverview();
     } finally {
       setLoadingScan(false);
     }
@@ -250,7 +281,7 @@ export default function MasterDashboard() {
         // 🔔 Telegram Benachrichtigung absenden
         sendTelegramAlert(
           `🚨 *Neues Top-Signal gefunden!*\n\n` +
-          `🪙 Coin: \`${bestSignal.symbol}\`\n` +
+          `🪙 Asset: \`${bestSignal.symbol}\`\n` +
           `⏱️ Timeframe: \`${bestSignal.timeframe}\`\n` +
           `📊 Richtung: *${bestSignal.position}*\n` +
           `🎯 Wahrscheinlichkeit: *${bestSignal.probability}%*\n` +
@@ -258,6 +289,7 @@ export default function MasterDashboard() {
           `🛑 Stop-Loss: \`$${bestSignal.stopLoss}\``
         );
       }
+      updateTimeframeOverview();
     } catch (e) { console.error("Auto-Scan Fehler", e); }
   }
 
@@ -404,12 +436,12 @@ export default function MasterDashboard() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex bg-[#121620] p-1 rounded-lg border border-gray-800">
+          <div className="flex flex-wrap bg-[#121620] p-1 rounded-lg border border-gray-800 gap-1">
             {SYMBOLS.map((sym) => (
               <button
                 key={sym}
                 onClick={() => setSelectedSymbol(sym)}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${selectedSymbol === sym ? "bg-blue-600 text-white shadow" : "text-gray-400 hover:text-white"}`}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${selectedSymbol === sym ? "bg-blue-600 text-white shadow" : "text-gray-400 hover:text-white"}`}
               >
                 {sym.replace("-USDT", "")}
               </button>
@@ -505,6 +537,34 @@ export default function MasterDashboard() {
         <div>
           {data && (
             <div className="bg-[#121620] p-5 rounded-xl border border-gray-800 shadow-xl space-y-6">
+              
+              {/* 📊 MULTI-TF SCHNELL-ÜBERSICHT */}
+              <div>
+                <span className="text-[10px] text-gray-400 uppercase tracking-wider block mb-2 font-semibold">⚡ Multi-TF Signal-Übersicht:</span>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {tfOverview.map((item) => {
+                    const isSelected = selectedTimeframe === item.timeframe.toLowerCase();
+                    const isLong = item.position === "Long";
+                    const isShort = item.position === "Short";
+                    return (
+                      <button
+                        key={item.timeframe}
+                        onClick={() => setSelectedTimeframe(item.timeframe.toLowerCase())}
+                        className={`p-1.5 rounded-lg border text-center transition-all cursor-pointer ${
+                          isSelected ? "border-blue-500 bg-blue-950/40 shadow" : "border-gray-800 bg-[#0f131c] hover:border-gray-700"
+                        }`}
+                      >
+                        <div className="text-[10px] font-bold text-gray-300">{item.timeframe}</div>
+                        <div className={`text-[10px] font-extrabold ${isLong ? "text-green-400" : isShort ? "text-red-400" : "text-yellow-400"}`}>
+                          {isLong ? "LONG" : isShort ? "SHORT" : "NEU"}
+                        </div>
+                        <div className="text-[9px] text-gray-400 font-mono">{item.probability}%</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="flex justify-between items-center pb-4 border-b border-gray-800">
                 <div>
                   <span className={`inline-block px-3 py-1 rounded-md text-xs font-bold tracking-wide ${data.position === "Long" ? "bg-green-500/20 text-green-400 border border-green-500/30" : data.position === "Short" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"}`}>
